@@ -59,8 +59,8 @@ migrate_to_supabase.py
 
 # 유틸리티 스크립트 (선택적)
 check_user_data.py
-
-# 임시 파일
+migrate_passwords.py
+fix_corrupted_passwords.py
 *.tmp
 *.bak
 *.log

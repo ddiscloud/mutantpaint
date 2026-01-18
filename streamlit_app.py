@@ -5085,7 +5085,18 @@ def page_admin():
                     st.success(f"총 {len(instances)}개의 개체 보유중")
                     
                     # 개체 목록 표시
-                    for idx, inst in enumerate(instances, 1):
+                    # 최신 생성 순으로 정렬 (birth_time 기준 내림차순)
+                    def _birth_key(x):
+                        bt = x.get('birth_time')
+                        if isinstance(bt, str):
+                            try:
+                                return datetime.fromisoformat(bt)
+                            except:
+                                pass
+                        return datetime.min
+                    instances_sorted = sorted(instances, key=lambda x: _birth_key(x), reverse=True)
+
+                    for idx, inst in enumerate(instances_sorted, 1):
                         # 전투력 계산
                         stats = inst.get('stats', {})
                         if stats:
@@ -5098,7 +5109,6 @@ def page_admin():
                             with col1:
                                 st.markdown(f"**이름:** {inst.get('name', 'N/A')}")
                                 st.markdown(f"**ID:** {inst.get('id', 'N/A')}")
-                                st.markdown(f"**레벨:** {inst.get('level', 'N/A')}")
                             with col2:
                                 st.markdown(f"**HP:** {stats.get('hp', 'N/A')}")
                                 st.markdown(f"**ATK:** {stats.get('atk', 'N/A')}")
@@ -5184,13 +5194,24 @@ def page_admin():
                     st.markdown("---")
                     
                     # 개체 선택
+                    # 최신 생성 순으로 정렬 (birth_time 기준 내림차순)
+                    def _birth_key(x):
+                        bt = x.get('birth_time')
+                        if isinstance(bt, str):
+                            try:
+                                return datetime.fromisoformat(bt)
+                            except:
+                                pass
+                        return datetime.min
+                    instances_sorted = sorted(instances, key=lambda x: _birth_key(x), reverse=True)
+
                     instance_options = {}
-                    for inst in instances:
+                    for inst in instances_sorted:
                         inst_name = inst.get('name', 'Unknown')
                         inst_id = inst.get('id', 'N/A')
                         stats = inst.get('stats', {})
                         power_score = calculate_power_score(stats) if stats else 0
-                        label = f"{inst_name} (Lv.{inst.get('level', 1)}) - 전투력: {power_score} - HP:{stats.get('hp')} ATK:{stats.get('atk')} MS:{stats.get('ms')}"
+                        label = f"{inst_name} - 전투력: {power_score} - HP:{stats.get('hp')} ATK:{stats.get('atk')} MS:{stats.get('ms')}"
                         instance_options[label] = inst_id
                     
                     selected_inst_label = st.selectbox(
@@ -5215,7 +5236,6 @@ def page_admin():
                             col1, col2 = st.columns(2)
                             with col1:
                                 st.markdown(f"• **이름:** {selected_inst.get('name')}")
-                                st.markdown(f"• **레벨:** {selected_inst.get('level')}")
                                 st.markdown(f"• **전투력:** {calculate_power_score(stats) if stats else 0}")
                             with col2:
                                 st.markdown(f"• **HP:** {stats.get('hp')}")
