@@ -2398,7 +2398,7 @@ def calculate_power_score(stats: Dict) -> int:
 
 def format_korean_number(n: int) -> str:
     """한국식 계층적 단위 표기: 경(10^16), 조(10^12), 억(10^8), 만(10^4)
-    - 예: 123456789 -> '1억2345만6789'
+    - 예: 123456789 -> '1억 2345만 6789'
     - 음수도 지원
     """
     if n == 0:
@@ -2422,14 +2422,14 @@ def format_korean_number(n: int) -> str:
         for base, label in units:
             if remaining >= base:
                 digit_count = remaining // base
-                result += str(digit_count) + label
+                result += str(digit_count) + label + " "
                 remaining = remaining % base
         
         # 일 단위 (1000 미만, 0이면 표시 안 함)
         if remaining > 0:
             result += str(remaining)
         
-        return ("-" if is_negative else "") + result
+        return ("-" if is_negative else "") + result.strip()
     except Exception:
         return str(n)
 
