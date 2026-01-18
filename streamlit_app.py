@@ -898,7 +898,7 @@ class Battle:
             if roll < dodge_chance:
                 defender.next_turn_dodge_active = False
                 defender.next_turn_dodge_chance = 0
-                return f"{defender_name}이(가) 공격을 회피했다! ({int(dodge_chance*100)}% 확률) [roll={roll:.3f}]"
+                return f"{defender_name}이(가) 공격을 회피했다! ({int(dodge_chance*100)}% 확률)"
             else:
                 # 회피 실패 시 플래그 초기화
                 defender.next_turn_dodge_active = False
@@ -1218,10 +1218,7 @@ class Battle:
             # 다음 상대 공격 1회 회피 (확률 기반)
             attacker.next_turn_dodge_active = True
             attacker.next_turn_dodge_chance = skill.get("value", 0.9)
-            msg = f" 다음 공격 {int(skill.get('value', 0.9)*100)}% 회피!"
-            result += msg
-            # 디버그: 스킬 사용 시
-            result += f" [DEBUG: active={attacker.next_turn_dodge_active}, chance={attacker.next_turn_dodge_chance}]"
+            result += f" 다음 공격 {int(skill.get('value', 0.9)*100)}% 회피!"
         
         elif effect == "reflect":
             duration = skill.get("duration", 2)

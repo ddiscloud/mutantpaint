@@ -294,10 +294,10 @@
     "name": "Absolute Defense",
     "resource": "wizard_hat.svg",
     "effect": "dodge_heal",
-    "dodge_count": 2,
+    "dodge_count": 3,
     "heal_value": 0.20,
     "cooldown": 10,
-    "desc": "2회 확정 회피 + HP 20% 회복"
+    "desc": "3회 확정 회피 + HP 20% 회복"
   },
   "acc1_unique05": {
     "grade": "Unique",
@@ -766,11 +766,10 @@
     "slot": 3,
     "name": "Dodge",
     "resource": "sandals.svg",
-    "effect": "dodge",
-    "value": 0.8,
-    "duration": 3,
-    "cooldown": 4,
-    "desc": "3턴간 80% 회피"
+    "effect": "next_turn_dodge",
+    "value": 0.7,
+    "cooldown": 3,
+    "desc": "다음 상대 공격을 70% 확률로 회피"
   },
   "acc3_normal04": {
     "grade": "Normal",
@@ -820,11 +819,10 @@
     "slot": 3,
     "name": "Shadow Step",
     "resource": "skates.svg",
-    "effect": "dodge",
-    "value": 0.8,
-    "duration": 2,
-    "cooldown": 5,
-    "desc": "2턴간 80% 회피"
+    "effect": "next_turn_dodge",
+    "value": 0.75,
+    "cooldown": 4,
+    "desc": "다음 상대 공격을 75% 확률로 회피"
   },
   "acc3_normal09": {
     "grade": "Normal",
@@ -914,11 +912,10 @@
     "slot": 3,
     "name": "Evasion Aura",
     "resource": "mermaid_tail.svg",
-    "effect": "dodge",
-    "value": 0.8,
-    "duration": 3,
-    "cooldown": 6,
-    "desc": "3턴간 80% 회피"
+    "effect": "next_turn_dodge",
+    "value": 0.85,
+    "cooldown": 5,
+    "desc": "다음 상대 공격을 85% 확률로 회피"
   },
   "acc3_rare08": {
     "grade": "Rare",
@@ -948,11 +945,10 @@
     "slot": 3,
     "name": "Absolute Dodge",
     "resource": "jet_boots.svg",
-    "effect": "dodge_multi",
+    "effect": "next_turn_dodge",
     "value": 1.0,
-    "duration": 1,
-    "cooldown": 8,
-    "desc": "1회 확정 회피"
+    "cooldown": 7,
+    "desc": "다음 상대 공격을 확정 회피"
   },
   "acc3_epic03": {
     "grade": "Epic",
@@ -1004,9 +1000,9 @@
     "effect": "dodge_ms_buff",
     "dodge": 1.0,
     "ms_boost": 0.6,
-    "duration": 2,
+    "duration": 3,
     "cooldown": 12,
-    "desc": "2회 확정 회피 + MS +60%"
+    "desc": "3회 확정 회피 + MS +60%"
   },
   "acc3_unique02": {
     "grade": "Unique",
