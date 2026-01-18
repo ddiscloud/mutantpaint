@@ -2842,9 +2842,24 @@ def init_session_state():
                     "accessories": set(),
                     "skills": {"slot1": set(), "slot2": set(), "slot3": set()}
                 }
-                # 기존 개체들로 collection 초기화
+                # 초기 개체들의 collection 일괄 추가 (최적화)
                 for inst in st.session_state.instances:
-                    update_collection(inst)
+                    # update_collection 대신 직접 추가
+                    st.session_state.collection["colors"]["main"].add(inst['appearance']['main_color']['id'])
+                    st.session_state.collection["colors"]["sub"].add(inst['appearance']['sub_color']['id'])
+                    st.session_state.collection["colors"]["pattern"].add(inst['appearance']['pattern_color']['id'])
+                    st.session_state.collection["patterns"].add(inst['appearance']['pattern']['id'])
+                    for i in range(1, 4):
+                        acc_key = f"accessory_{i}"
+                        if inst.get(acc_key):
+                            skill_id = inst[acc_key]['id']
+                            st.session_state.collection["accessories"].add(skill_id)
+                            if skill_id.startswith("acc1_"):
+                                st.session_state.collection["skills"]["slot1"].add(skill_id)
+                            elif skill_id.startswith("acc2_"):
+                                st.session_state.collection["skills"]["slot2"].add(skill_id)
+                            elif skill_id.startswith("acc3_"):
+                                st.session_state.collection["skills"]["slot3"].add(skill_id)
                 save_game_data()
             elif isinstance(collection_data, list):
                 # 구 형식 (단순 리스트)을 새 형식으로 변환
@@ -2854,9 +2869,23 @@ def init_session_state():
                     "accessories": set(),
                     "skills": {"slot1": set(), "slot2": set(), "slot3": set()}
                 }
-                # 기존 개체들로 재구성
+                # 기존 개체들로 재구성 (최적화)
                 for inst in st.session_state.instances:
-                    update_collection(inst)
+                    st.session_state.collection["colors"]["main"].add(inst['appearance']['main_color']['id'])
+                    st.session_state.collection["colors"]["sub"].add(inst['appearance']['sub_color']['id'])
+                    st.session_state.collection["colors"]["pattern"].add(inst['appearance']['pattern_color']['id'])
+                    st.session_state.collection["patterns"].add(inst['appearance']['pattern']['id'])
+                    for i in range(1, 4):
+                        acc_key = f"accessory_{i}"
+                        if inst.get(acc_key):
+                            skill_id = inst[acc_key]['id']
+                            st.session_state.collection["accessories"].add(skill_id)
+                            if skill_id.startswith("acc1_"):
+                                st.session_state.collection["skills"]["slot1"].add(skill_id)
+                            elif skill_id.startswith("acc2_"):
+                                st.session_state.collection["skills"]["slot2"].add(skill_id)
+                            elif skill_id.startswith("acc3_"):
+                                st.session_state.collection["skills"]["slot3"].add(skill_id)
                 save_game_data()
             else:
                 # 새 형식 로드
@@ -2895,9 +2924,23 @@ def init_session_state():
                 "accessories": set(),
                 "skills": {"slot1": set(), "slot2": set(), "slot3": set()}
             }
-            # 초기 개체들로 collection 초기화
+            # 초기 개체들로 collection 초기화 (최적화)
             for inst in st.session_state.instances:
-                update_collection(inst)
+                st.session_state.collection["colors"]["main"].add(inst['appearance']['main_color']['id'])
+                st.session_state.collection["colors"]["sub"].add(inst['appearance']['sub_color']['id'])
+                st.session_state.collection["colors"]["pattern"].add(inst['appearance']['pattern_color']['id'])
+                st.session_state.collection["patterns"].add(inst['appearance']['pattern']['id'])
+                for i in range(1, 4):
+                    acc_key = f"accessory_{i}"
+                    if inst.get(acc_key):
+                        skill_id = inst[acc_key]['id']
+                        st.session_state.collection["accessories"].add(skill_id)
+                        if skill_id.startswith("acc1_"):
+                            st.session_state.collection["skills"]["slot1"].add(skill_id)
+                        elif skill_id.startswith("acc2_"):
+                            st.session_state.collection["skills"]["slot2"].add(skill_id)
+                        elif skill_id.startswith("acc3_"):
+                            st.session_state.collection["skills"]["slot3"].add(skill_id)
             save_game_data()
 
 def display_instance_card(instance: Dict, show_details: bool = False, show_compact: bool = False):
@@ -3089,7 +3132,7 @@ def show_tutorial():
     if st.button("✅ 시작하기!", use_container_width=True, type="primary"):
         st.session_state.tutorial_seen = True
         save_game_data()
-        st.rerun()
+        # st.rerun() 제거 - 버튼 클릭으로 자연스럽게 리렌더링
 
 def page_home():
     """홈 화면"""
@@ -3315,54 +3358,75 @@ def page_list():
     st.sidebar.markdown("---")
     sort_by = st.sidebar.selectbox("정렬", ["최신", "전투력", "HP", "ATK", "MS"])
     
-    # 필터링
-    filtered = st.session_state.instances.copy()
-    if show_favorites_only:
-        filtered = [inst for inst in filtered if inst["is_favorite"]]
-    if not show_locked:
-        filtered = [inst for inst in filtered if not inst["is_locked"]]
+    # 필터 변경 감지를 위한 해시 생성 (캐싱 최적화)
+    current_filter_hash = hash((
+        show_favorites_only, show_locked,
+        main_color_filter, sub_color_filter, pattern_color_filter, pattern_filter,
+        skill1_filter, skill2_filter, skill3_filter,
+        sort_by, len(st.session_state.instances)
+    ))
     
-    # 외형 필터 적용
-    if main_color_filter:
-        filtered = [inst for inst in filtered if inst["appearance"]["main_color"]["id"] == main_color_filter]
-    if sub_color_filter:
-        filtered = [inst for inst in filtered if inst["appearance"]["sub_color"]["id"] == sub_color_filter]
-    if pattern_color_filter:
-        filtered = [inst for inst in filtered if inst["appearance"]["pattern_color"]["id"] == pattern_color_filter]
-    if pattern_filter:
-        filtered = [inst for inst in filtered if inst["appearance"]["pattern"]["id"] == pattern_filter]
-    
-    # 스킬 필터 적용
-    def get_skill_id(inst, slot_key, acc_key):
-        # skills 또는 accessories 딕셔너리에서 확인
-        skill_id = inst.get("skills", {}).get(slot_key) or inst.get("accessories", {}).get(slot_key)
-        if skill_id:
-            return skill_id
-        # accessory_N 개별 키에서 확인
-        acc = inst.get(acc_key)
-        if acc:
-            return acc["id"] if isinstance(acc, dict) else acc
-        return None
-    
-    if skill1_filter:
-        filtered = [inst for inst in filtered if get_skill_id(inst, "slot1", "accessory_1") == skill1_filter]
-    if skill2_filter:
-        filtered = [inst for inst in filtered if get_skill_id(inst, "slot2", "accessory_2") == skill2_filter]
-    if skill3_filter:
-        filtered = [inst for inst in filtered if get_skill_id(inst, "slot3", "accessory_3") == skill3_filter]
-    
-    # 정렬
-    if sort_by == "최신":
-        filtered.sort(key=lambda x: x["birth_time"], reverse=True)
-    elif sort_by == "전투력":
-        # power_score 필드 사용 (재계산 방지)
-        filtered.sort(key=lambda x: x.get("power_score", calculate_power_score(x["stats"])), reverse=True)
-    elif sort_by == "HP":
-        filtered.sort(key=lambda x: x["stats"]["hp"], reverse=True)
-    elif sort_by == "ATK":
-        filtered.sort(key=lambda x: x["stats"]["atk"], reverse=True)
-    elif sort_by == "MS":
-        filtered.sort(key=lambda x: x["stats"]["ms"], reverse=True)
+    # 필터 변경 시에만 재계산, 아니면 캐시 사용
+    if ("list_filter_hash" not in st.session_state or 
+        st.session_state.list_filter_hash != current_filter_hash or
+        "list_filtered_cache" not in st.session_state):
+        
+        st.session_state.list_filter_hash = current_filter_hash
+        
+        # 필터링 (캐시 미스 시에만 실행)
+        filtered = st.session_state.instances.copy()
+        if show_favorites_only:
+            filtered = [inst for inst in filtered if inst["is_favorite"]]
+        if not show_locked:
+            filtered = [inst for inst in filtered if not inst["is_locked"]]
+        
+        # 외형 필터 적용
+        if main_color_filter:
+            filtered = [inst for inst in filtered if inst["appearance"]["main_color"]["id"] == main_color_filter]
+        if sub_color_filter:
+            filtered = [inst for inst in filtered if inst["appearance"]["sub_color"]["id"] == sub_color_filter]
+        if pattern_color_filter:
+            filtered = [inst for inst in filtered if inst["appearance"]["pattern_color"]["id"] == pattern_color_filter]
+        if pattern_filter:
+            filtered = [inst for inst in filtered if inst["appearance"]["pattern"]["id"] == pattern_filter]
+        
+        # 스킬 필터 적용
+        def get_skill_id(inst, slot_key, acc_key):
+            # skills 또는 accessories 딕셔너리에서 확인
+            skill_id = inst.get("skills", {}).get(slot_key) or inst.get("accessories", {}).get(slot_key)
+            if skill_id:
+                return skill_id
+            # accessory_N 개별 키에서 확인
+            acc = inst.get(acc_key)
+            if acc:
+                return acc["id"] if isinstance(acc, dict) else acc
+            return None
+        
+        if skill1_filter:
+            filtered = [inst for inst in filtered if get_skill_id(inst, "slot1", "accessory_1") == skill1_filter]
+        if skill2_filter:
+            filtered = [inst for inst in filtered if get_skill_id(inst, "slot2", "accessory_2") == skill2_filter]
+        if skill3_filter:
+            filtered = [inst for inst in filtered if get_skill_id(inst, "slot3", "accessory_3") == skill3_filter]
+        
+        # 정렬
+        if sort_by == "최신":
+            filtered.sort(key=lambda x: x["birth_time"], reverse=True)
+        elif sort_by == "전투력":
+            # power_score 필드 사용 (재계산 방지)
+            filtered.sort(key=lambda x: x.get("power_score", calculate_power_score(x["stats"])), reverse=True)
+        elif sort_by == "HP":
+            filtered.sort(key=lambda x: x["stats"]["hp"], reverse=True)
+        elif sort_by == "ATK":
+            filtered.sort(key=lambda x: x["stats"]["atk"], reverse=True)
+        elif sort_by == "MS":
+            filtered.sort(key=lambda x: x["stats"]["ms"], reverse=True)
+        
+        # 캐시에 저장
+        st.session_state.list_filtered_cache = filtered
+    else:
+        # 캐시 사용 (필터 미변경)
+        filtered = st.session_state.list_filtered_cache
     
     # 페이지네이션 (성능 최적화)
     items_per_page = 20
