@@ -892,15 +892,17 @@ class Battle:
             회피 성공 시 메시지, 실패 시 None
         """
         # 1. 다음 턴 회피 체크 (우선순위 높음)
-        if defender.next_turn_dodge_active and random.random() < defender.next_turn_dodge_chance:
-            defender.next_turn_dodge_active = False
-            defender.next_turn_dodge_chance = 0
-            return f"{defender_name}이(가) 공격을 회피했다! ({int(defender.next_turn_dodge_chance*100)}% 확률)"
-        
-        # 플래그 초기화 (회피 실패 시에도)
         if defender.next_turn_dodge_active:
-            defender.next_turn_dodge_active = False
-            defender.next_turn_dodge_chance = 0
+            dodge_chance = defender.next_turn_dodge_chance
+            roll = random.random()
+            if roll < dodge_chance:
+                defender.next_turn_dodge_active = False
+                defender.next_turn_dodge_chance = 0
+                return f"{defender_name}이(가) 공격을 회피했다! ({int(dodge_chance*100)}% 확률) [roll={roll:.3f}]"
+            else:
+                # 회피 실패 시 플래그 초기화
+                defender.next_turn_dodge_active = False
+                defender.next_turn_dodge_chance = 0
         
         # 2. 횟수 기반 회피 체크
         for buff in defender.buffs:
@@ -1216,7 +1218,10 @@ class Battle:
             # 다음 상대 공격 1회 회피 (확률 기반)
             attacker.next_turn_dodge_active = True
             attacker.next_turn_dodge_chance = skill.get("value", 0.9)
-            result += f" 다음 공격 {int(skill.get('value', 0.9)*100)}% 회피!"
+            msg = f" 다음 공격 {int(skill.get('value', 0.9)*100)}% 회피!"
+            result += msg
+            # 디버그: 스킬 사용 시
+            result += f" [DEBUG: active={attacker.next_turn_dodge_active}, chance={attacker.next_turn_dodge_chance}]"
         
         elif effect == "reflect":
             duration = skill.get("duration", 2)
