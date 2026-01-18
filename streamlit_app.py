@@ -1014,6 +1014,8 @@ class Battle:
         self.log = []
         self.max_turns = 50
         self.winner = None
+        # 행동 임계값을 전투 시작 시 고정 (base MS 기준)
+        self.action_threshold = self.player.base_ms + self.enemy.base_ms
     
     def add_log(self, message: str):
         """전투 로그 추가"""
@@ -1133,13 +1135,13 @@ class Battle:
     def tick_and_get_next_actor(self) -> Optional[BattleInstance]:
         """게이지를 1틱만 진행하고 다음 행동자 반환 (ATB 시스템)
         
-        행동 임계값 = 두 개체의 MS 합계
+        행동 임계값 = 두 개체의 base MS 합계 (고정)
         
         Returns:
             행동할 캐릭터, 아무도 행동 못하면 None
         """
-        # 행동 임계값: 두 개체의 MS 합계
-        action_threshold = self.player.current_ms + self.enemy.current_ms
+        # 행동 임계값: 전투 시작 시 고정된 값 사용
+        action_threshold = self.action_threshold
         
         # 먼저 현재 게이지 확인 (증가 전)
         player_ready = self.player.speed_gauge >= action_threshold
@@ -4618,7 +4620,7 @@ def page_battle():
         # 턴별 실행
         turn_count = 0
         max_turns = 50
-        action_threshold = battle.player.current_ms + battle.enemy.current_ms
+        action_threshold = battle.action_threshold  # Battle 클래스의 고정 임계값 사용
         
         # 이전 HP 추적 (데미지 시각화용)
         prev_player_hp = battle.player.current_hp
