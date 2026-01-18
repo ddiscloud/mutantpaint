@@ -2438,44 +2438,74 @@ def get_all_users_representatives() -> List[Dict]:
     """모든 사용자의 대표 유닛 정보 수집"""
     representatives = []
     
-    if not os.path.exists("saves"):
-        return representatives
-    
-    # saves 폴더의 모든 저장 파일 탐색
-    for filename in os.listdir("saves"):
-        if filename.endswith("_data.json"):
-            try:
-                filepath = os.path.join("saves", filename)
-                with open(filepath, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                
-                # 대표 유닛이 설정되어 있는지 확인
-                rep_id = data.get("representative_id")
-                if rep_id:
-                    instances = data.get("instances", [])
-                    rep_inst = next((inst for inst in instances if inst["id"] == rep_id), None)
-                    
-                    if rep_inst:
-                        # 사용자 이름 추출 (filename에서 _data.json 제거)
-                        username = filename.replace("_data.json", "").replace("_", " ")
-                        
-                        representatives.append({
-                            "username": username,
-                            "instance": rep_inst,
-                            "power_score": calculate_power_score(rep_inst["stats"])
-                        })
-            except Exception as e:
-                # 파일 읽기 실패 시 무시
+    # 방법 1: Supabase에서 시도
+    try:
+        from supabase_db import get_all_users, load_game_data as db_load_game_data
+        
+        users = get_all_users()
+        
+        for user in users:
+            username = user.get("username")
+            if not username:
                 continue
+            
+            # 게임 데이터 로드 (Supabase)
+            game_data = db_load_game_data(username)
+            if not game_data:
+                continue
+            
+            # 대표 유닛 확인
+            rep_id = game_data.get("representative_id")
+            if not rep_id:
+                continue
+            
+            instances = game_data.get("instances", [])
+            rep_inst = next((inst for inst in instances if inst.get("id") == rep_id), None)
+            
+            if rep_inst and rep_inst.get("stats"):
+                representatives.append({
+                    "username": username,
+                    "instance": rep_inst,
+                    "power_score": calculate_power_score(rep_inst["stats"])
+                })
+    except Exception as e:
+        print(f"⚠️ Supabase 랭킹 조회 실패: {e}")
     
-    # 전투력 순으로 정렬 (동점 시: HP > ATK > MS > 이름 역순)
+    # 방법 2: 로컬 파일에서 보완 (Supabase 미사용 혹은 실패 시)
+    if not representatives and os.path.exists("saves"):
+        try:
+            for filename in os.listdir("saves"):
+                if filename.endswith("_data.json"):
+                    try:
+                        filepath = os.path.join("saves", filename)
+                        with open(filepath, "r", encoding="utf-8") as f:
+                            data = json.load(f)
+                        
+                        rep_id = data.get("representative_id")
+                        if rep_id:
+                            instances = data.get("instances", [])
+                            rep_inst = next((inst for inst in instances if inst.get("id") == rep_id), None)
+                            
+                            if rep_inst and rep_inst.get("stats"):
+                                username = filename.replace("_data.json", "")
+                                representatives.append({
+                                    "username": username,
+                                    "instance": rep_inst,
+                                    "power_score": calculate_power_score(rep_inst["stats"])
+                                })
+                    except Exception:
+                        continue
+        except Exception as e:
+            print(f"⚠️ 로컬 파일 랭킹 조회 실패: {e}")
+    
+    # 전투력 순으로 정렬
     representatives.sort(
         key=lambda x: (
-            x["power_score"],  # 1순위: 전투력 (높을수록)
-            x["instance"]["stats"]["hp"],  # 2순위: HP (높을수록)
-            x["instance"]["stats"]["atk"],  # 3순위: ATK (높을수록)
-            x["instance"]["stats"]["ms"],  # 4순위: MS (높을수록)
-            x["username"]  # 5순위: 이름 (알파벳 순)
+            x["power_score"],
+            x["instance"].get("stats", {}).get("hp", 0),
+            x["instance"].get("stats", {}).get("atk", 0),
+            x["instance"].get("stats", {}).get("ms", 0),
+            x["username"]
         ),
         reverse=True
     )
@@ -3932,7 +3962,7 @@ def page_ranking():
                 <div style="padding: 15px; border-radius: 10px; border: 2px solid {'#ffd700' if idx==0 else '#c0c0c0' if idx==1 else '#cd7f32'}; text-align: center; background: {'rgba(255, 215, 0, 0.1)' if idx==0 else 'transparent'};">
                     <div style="font-size: 2em;">{medal}</div>
                     <div style="font-weight: bold; margin: 5px 0;">{rep['username']}</div>
-                    <div style="font-size: 0.9em; opacity: 0.8;">💪 {rep['power_score']}</div>
+                    <div style="font-size: 0.9em; opacity: 0.8;">💪 {format_korean_number(rep['power_score'])}</div>
                 </div>
                 """, unsafe_allow_html=True)
                 
@@ -3942,8 +3972,8 @@ def page_ranking():
                 
                 with st.expander("상세 정보"):
                     st.markdown(f"HP: {rep['instance']['stats']['hp']:,}")
-                    st.markdown(f"ATK: {rep['instance']['stats']['atk']}")
-                    st.markdown(f"MS: {rep['instance']['stats']['ms']}")
+                    st.markdown(f"ATK: {rep['instance']['stats']['atk']:,}")
+                    st.markdown(f"MS: {rep['instance']['stats']['ms']:,}")
                     
                     st.markdown("**⚔️ 스킬:**")
                     for i in range(1, 4):
