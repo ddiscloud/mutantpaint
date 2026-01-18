@@ -5959,12 +5959,12 @@ def page_login():
                             
                             # 이름과 전투력
                             st.markdown(f"<div style='text-align: center; font-weight: bold; margin-top: 8px;'>{rep_inst['name']}</div>", unsafe_allow_html=True)
-                            st.markdown(f"<div style='text-align: center; color: #4CAF50; font-size: 0.9em;'>💪 {user_data['power_score']}</div>", unsafe_allow_html=True)
+                            st.markdown(f"<div style='text-align: center; color: #4CAF50; font-size: 0.9em;'>💪 {format_korean_number(user_data['power_score'])}</div>", unsafe_allow_html=True)
                             
                             # 스탯 (작게 표시)
                             st.markdown(f"""
                                 <div style='text-align: center; font-size: 0.85em; color: #888; margin-top: 5px;'>
-                                    HP {rep_inst["stats"]["hp"]} | ATK {rep_inst["stats"]["atk"]} | MS {rep_inst["stats"]["ms"]}
+                                    HP {rep_inst["stats"]["hp"]:,} | ATK {rep_inst["stats"]["atk"]:,} | MS {rep_inst["stats"]["ms"]:,}
                                 </div>
                             """, unsafe_allow_html=True)
             else:
