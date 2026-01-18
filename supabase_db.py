@@ -3,6 +3,7 @@ Supabase 데이터베이스 함수들
 streamlit_app.py에서 사용할 DB 관련 함수들을 제공합니다.
 """
 import json
+import uuid
 from typing import Dict, Optional, List
 from datetime import datetime
 from supabase_config import get_supabase_client
@@ -501,7 +502,6 @@ def send_mail(user_id: str, mail_type: str, message: str,
     """우편 발송"""
     try:
         client = get_supabase_client()
-        import uuid
         
         mail_data = {
             "id": str(uuid.uuid4()),
