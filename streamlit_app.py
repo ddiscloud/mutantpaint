@@ -11,7 +11,6 @@ import hashlib
 import shutil
 import tempfile
 # msvcrt 제거 - Supabase 사용으로 파일 잠금 불필요
-from openai import OpenAI
 from dotenv import load_dotenv
 
 # Supabase 임포트
@@ -57,13 +56,6 @@ ACCESSORY_MASTER = SKILL_MASTER  # 하위 호환성
 # ============================================================================
 # 보안 및 파일 관리
 # ============================================================================
-
-# OpenAI 클라이언트 초기화 (API 키는 환경 변수에서 읽음)
-openai_client = None
-try:
-    openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-except Exception as e:
-    print(f"OpenAI 클라이언트 초기화 실패: {e}")
 
 def check_content_safety(text: str) -> Tuple[bool, str]:
     """텍스트 안전성 검사 (기본 필터 사용, OpenAI Moderation은 비활성화)
