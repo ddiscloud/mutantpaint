@@ -2918,7 +2918,7 @@ def display_instance_card(instance: Dict, show_details: bool = False, show_compa
     with col2:
         # 이름과 전투력
         st.markdown(f"### {instance['name']}")
-        power_score = calculate_power_score(instance["stats"])
+        power_score = instance.get("power_score", calculate_power_score(instance["stats"]))
         st.markdown(f"💪 **전투력: {format_korean_number(power_score)}**")
         
         # 스탯 (한 줄로)
@@ -3355,7 +3355,8 @@ def page_list():
     if sort_by == "최신":
         filtered.sort(key=lambda x: x["birth_time"], reverse=True)
     elif sort_by == "전투력":
-        filtered.sort(key=lambda x: calculate_power_score(x["stats"]), reverse=True)
+        # power_score 필드 사용 (재계산 방지)
+        filtered.sort(key=lambda x: x.get("power_score", calculate_power_score(x["stats"])), reverse=True)
     elif sort_by == "HP":
         filtered.sort(key=lambda x: x["stats"]["hp"], reverse=True)
     elif sort_by == "ATK":
@@ -3389,12 +3390,15 @@ def page_list():
     end_idx = min(start_idx + items_per_page, total_items)
     page_items = filtered[start_idx:end_idx]
     
+    # power_score 미리 계산 (반복 사용 방지)
+    power_scores = {inst["id"]: inst.get("power_score", calculate_power_score(inst["stats"])) for inst in page_items}
+    
     # 표시
     for inst in page_items:
         is_representative = st.session_state.get("representative_id") == inst["id"]
         is_favorite = inst.get("is_favorite", False)
         is_locked = inst.get("is_locked", False)
-        power_score = calculate_power_score(inst["stats"])
+        power_score = power_scores[inst["id"]]
         
         title = f"{'👑 ' if is_representative else ''}{inst['name']}{'⭐' if is_favorite else ''}{'🔒' if is_locked else ''} - HP:{inst['stats']['hp']:,} ATK:{inst['stats']['atk']:,} MS:{inst['stats']['ms']:,} 💪{format_korean_number(power_score)}"
         
