@@ -6,6 +6,12 @@ import json
 from typing import Dict, Optional, List
 from datetime import datetime
 from supabase_config import get_supabase_client
+import sys
+import io
+
+# UTF-8 인코딩 설정 (Windows에서 한글 출력)
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
 # ============================================================================
 # 마스터 데이터 함수 (읽기 전용)
@@ -130,9 +136,14 @@ def create_user(username: str, password_hash: str) -> bool:
             "username": username,
             "password_hash": password_hash
         }).execute()
+        print(f"✅ 사용자 '{username}' 생성 완료")
         return True
     except Exception as e:
-        print(f"❌ 사용자 생성 실패: {e}")
+        error_msg = str(e)
+        if "duplicate" in error_msg.lower() or "unique" in error_msg.lower():
+            print(f"⚠️ 사용자 '{username}' 이미 존재함")
+        else:
+            print(f"❌ 사용자 생성 실패 ({username}): {e}")
         return False
 
 

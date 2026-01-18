@@ -5,6 +5,12 @@ import os
 from supabase import create_client, Client
 from dotenv import load_dotenv
 from typing import Optional
+import sys
+import io
+
+# UTF-8 인코딩 설정 (Windows에서 한글 출력)
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
 # 환경 변수 로드 (.env 파일 - 로컬 개발용)
 load_dotenv()
@@ -15,22 +21,26 @@ try:
     # Streamlit Cloud Secrets 우선 (배포 환경)
     SUPABASE_URL = st.secrets.get("SUPABASE_URL", os.getenv("SUPABASE_URL"))
     SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", os.getenv("SUPABASE_KEY"))
+    SUPABASE_SERVICE_ROLE_KEY = st.secrets.get("SUPABASE_SERVICE_ROLE_KEY", os.getenv("SUPABASE_SERVICE_ROLE_KEY"))
 except:
     # Streamlit이 없는 경우 (일반 Python 스크립트)
     SUPABASE_URL = os.getenv("SUPABASE_URL")
     SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+    SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
 # Supabase 클라이언트 초기화
 supabase: Optional[Client] = None
 
 try:
     if SUPABASE_URL and SUPABASE_KEY:
-        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-        print("✅ Supabase 연결 성공")
+        # 서비스 역할 키가 있으면 사용 (RLS 우회)
+        api_key = SUPABASE_SERVICE_ROLE_KEY if SUPABASE_SERVICE_ROLE_KEY else SUPABASE_KEY
+        supabase = create_client(SUPABASE_URL, api_key)
+        print("OK: Supabase connection successful")
     else:
-        print("⚠️ Supabase 환경 변수가 설정되지 않았습니다.")
+        print("WARNING: Supabase environment variables not set")
 except Exception as e:
-    print(f"❌ Supabase 연결 실패: {e}")
+    print(f"ERROR: Supabase connection failed: {e}")
 
 def get_supabase_client() -> Client:
     """Supabase 클라이언트 반환"""
