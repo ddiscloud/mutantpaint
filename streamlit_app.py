@@ -1912,16 +1912,22 @@ class Battle:
         if defender.invincible > 0:
             return f"{attacker_name}의 공격! 하지만 {defender_name}은(는) 무적 상태!"
         
-        # 피해 적용
-        defender.current_hp = max(0, defender.current_hp - final_dmg)
+        # 피해 적용 (쉴드 처리 포함)
+        actual_dmg = self.apply_damage(attacker, defender, final_dmg)
         
         # 반사 데미지
         reflect_dmg = 0
         for buff in defender.buffs:
             if buff.type == "reflect":
-                reflect_dmg += int(final_dmg * buff.value)
+                reflect_dmg += int(actual_dmg * buff.value)
         
-        result = f"{attacker_name}의 공격! {defender_name}에게 {final_dmg} 데미지!"
+        # 쉴드로 막았는지 체크
+        shield_blocked = defender.shield > 0 or (final_dmg > actual_dmg)
+        
+        if shield_blocked:
+            result = f"{attacker_name}의 공격! {defender_name}에게 {actual_dmg} 데미지! 🛡️"
+        else:
+            result = f"{attacker_name}의 공격! {defender_name}에게 {actual_dmg} 데미지!"
         
         if reflect_dmg > 0:
             attacker.current_hp = max(0, attacker.current_hp - reflect_dmg)
@@ -4654,9 +4660,10 @@ def page_battle():
             # HTML 직접 생성
             html_parts = ['<div style="display: flex; gap: 20px; margin: 10px 0;">']
             
-            # 플레이어 HP
+            # 플레이어 HP + 쉴드
             html_parts.append('<div style="flex: 1;">')
-            html_parts.append(f'<div style="font-weight: bold; margin-bottom: 5px;">🔵 플레이어 HP: {battle.player.current_hp}/{battle.player.max_hp}</div>')
+            shield_text_player = f' + 🛡️{battle.player.shield}' if battle.player.shield > 0 else ''
+            html_parts.append(f'<div style="font-weight: bold; margin-bottom: 5px;">🔵 플레이어 HP: {battle.player.current_hp}/{battle.player.max_hp}{shield_text_player}</div>')
             html_parts.append('<div style="background: rgba(0,0,0,0.1); height: 25px; border-radius: 5px; overflow: hidden; position: relative;">')
             
             if prev_player_hp > battle.player.current_hp:  # 데미지
@@ -4671,11 +4678,17 @@ def page_battle():
                 # 변화 없음
                 html_parts.append(f'<div style="background: #00cc00; height: 100%; width: {player_hp_percent}%; transition: width 0.3s; position: absolute;"></div>')
             
+            # 쉴드 바 추가 (HP 바 위에 노란색으로 표시)
+            if battle.player.shield > 0:
+                shield_percent = min(100, (battle.player.shield / battle.player.max_hp) * 100)
+                html_parts.append(f'<div style="background: rgba(255, 215, 0, 0.7); height: 100%; width: {shield_percent}%; transition: width 0.3s; position: absolute; left: {player_hp_percent}%;"></div>')
+            
             html_parts.append('</div></div>')
             
-            # 적군 HP
+            # 적군 HP + 쉴드
             html_parts.append('<div style="flex: 1;">')
-            html_parts.append(f'<div style="font-weight: bold; margin-bottom: 5px;">🔴 적군 HP: {battle.enemy.current_hp}/{battle.enemy.max_hp}</div>')
+            shield_text_enemy = f' + 🛡️{battle.enemy.shield}' if battle.enemy.shield > 0 else ''
+            html_parts.append(f'<div style="font-weight: bold; margin-bottom: 5px;">🔴 적군 HP: {battle.enemy.current_hp}/{battle.enemy.max_hp}{shield_text_enemy}</div>')
             html_parts.append('<div style="background: rgba(0,0,0,0.1); height: 25px; border-radius: 5px; overflow: hidden; position: relative;">')
             
             if prev_enemy_hp > battle.enemy.current_hp:  # 데미지
@@ -4686,6 +4699,11 @@ def page_battle():
                 html_parts.append(f'<div style="background: #00cc00; height: 100%; width: {prev_enemy_hp_percent}%; transition: width 0.8s; position: absolute;"></div>')
             else:
                 html_parts.append(f'<div style="background: #00cc00; height: 100%; width: {enemy_hp_percent}%; transition: width 0.3s; position: absolute;"></div>')
+            
+            # 쉴드 바 추가 (HP 바 위에 노란색으로 표시)
+            if battle.enemy.shield > 0:
+                shield_percent = min(100, (battle.enemy.shield / battle.enemy.max_hp) * 100)
+                html_parts.append(f'<div style="background: rgba(255, 215, 0, 0.7); height: 100%; width: {shield_percent}%; transition: width 0.3s; position: absolute; left: {enemy_hp_percent}%;"></div>')
             
             html_parts.append('</div></div>')
             
