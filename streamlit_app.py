@@ -2395,6 +2395,45 @@ def calculate_power_score(stats: Dict) -> int:
     """
     return stats["hp"] + stats["atk"] * 10 + stats["ms"] * 5
 
+
+def format_korean_number(n: int) -> str:
+    """한국식 계층적 단위 표기: 경(10^16), 조(10^12), 억(10^8), 만(10^4)
+    - 예: 123456789 -> '1억2345만6789'
+    - 음수도 지원
+    """
+    if n == 0:
+        return "0"
+    
+    try:
+        is_negative = n < 0
+        abs_n = abs(n)
+        
+        # 단위별 (base, label)
+        units = [
+            (10**16, "경"),
+            (10**12, "조"),
+            (10**8, "억"),
+            (10**4, "만"),
+        ]
+        
+        result = ""
+        remaining = abs_n
+        
+        for base, label in units:
+            if remaining >= base:
+                digit_count = remaining // base
+                result += str(digit_count) + label
+                remaining = remaining % base
+        
+        # 일 단위 (1000 미만, 0이면 표시 안 함)
+        if remaining > 0:
+            result += str(remaining)
+        
+        return ("-" if is_negative else "") + result
+    except Exception:
+        return str(n)
+
+
 def get_all_users_representatives() -> List[Dict]:
     """모든 사용자의 대표 유닛 정보 수집"""
     representatives = []
@@ -2622,10 +2661,10 @@ def display_instance_card(instance: Dict, show_details: bool = False, show_compa
         # 이름과 전투력
         st.markdown(f"### {instance['name']}")
         power_score = calculate_power_score(instance["stats"])
-        st.markdown(f"💪 **전투력: {power_score}**")
+        st.markdown(f"💪 **전투력: {format_korean_number(power_score)}**")
         
         # 스탯 (한 줄로)
-        st.markdown(f"**HP** {instance['stats']['hp']} | **ATK** {instance['stats']['atk']} | **MS** {instance['stats']['ms']}")
+        st.markdown(f"**HP** {instance['stats']['hp']:,} | **ATK** {instance['stats']['atk']:,} | **MS** {instance['stats']['ms']:,}")
         
         # 스킬 (항상 표시)
         st.markdown("**⚔️ 스킬:**")
@@ -3088,7 +3127,7 @@ def page_list():
         is_locked = inst.get("is_locked", False)
         power_score = calculate_power_score(inst["stats"])
         
-        title = f"{'👑 ' if is_representative else ''}{inst['name']}{'⭐' if is_favorite else ''}{'🔒' if is_locked else ''} - HP:{inst['stats']['hp']} ATK:{inst['stats']['atk']} MS:{inst['stats']['ms']} 💪{power_score}"
+        title = f"{'👑 ' if is_representative else ''}{inst['name']}{'⭐' if is_favorite else ''}{'🔒' if is_locked else ''} - HP:{inst['stats']['hp']:,} ATK:{inst['stats']['atk']:,} MS:{inst['stats']['ms']:,} 💪{format_korean_number(power_score)}"
         
         with st.expander(title):
             # 버튼 먼저 표시 (상단)
@@ -3395,9 +3434,9 @@ def page_bulk_delete():
         with col_info:
             power_score = calculate_power_score(inst["stats"])
             title = f"{'👑 ' if is_representative else ''}{inst['name']}{'⭐' if is_favorite else ''}"
-            stats = f"HP:{inst['stats']['hp']} ATK:{inst['stats']['atk']} MS:{inst['stats']['ms']} 💪{power_score}"
+            stats = f"HP:{inst['stats']['hp']:,} ATK:{inst['stats']['atk']:,} MS:{inst['stats']['ms']:,} 💪{format_korean_number(power_score)}"
             
-            with st.expander(f"{title} - {stats}"):
+            with st.expander(f"{title} - {stats}:"):
                 display_instance_card(inst, show_details=True)
 
 def page_random_box():
@@ -3830,10 +3869,10 @@ def page_ranking():
         st.metric("🎯 총 플레이어", f"{len(representatives)}명")
     with col2:
         avg_power = sum(r['power_score'] for r in representatives) / len(representatives)
-        st.metric("📊 평균 전투력", f"{int(avg_power)}")
+        st.metric("📊 평균 전투력", f"{format_korean_number(int(avg_power))}")
     with col3:
         max_power = representatives[0]['power_score'] if representatives else 0
-        st.metric("👑 1위 전투력", f"{max_power}")
+        st.metric("👑 1위 전투력", f"{format_korean_number(max_power)}")
     
     st.caption("💡 전투력 = HP + ATK×10 + MS×5")
     st.markdown("---")
@@ -3855,7 +3894,7 @@ def page_ranking():
             st.markdown(svg, unsafe_allow_html=True)
         with col2:
             st.markdown(f"**{my_rep['instance']['name']}**")
-            st.markdown(f"💪 **{my_rep['power_score']}** | HP {my_rep['instance']['stats']['hp']} | ATK {my_rep['instance']['stats']['atk']} | MS {my_rep['instance']['stats']['ms']}")
+            st.markdown(f"💪 **{format_korean_number(my_rep['power_score'])}** | HP {my_rep['instance']['stats']['hp']:,} | ATK {my_rep['instance']['stats']['atk']:,} | MS {my_rep['instance']['stats']['ms']:,}")
         with col3:
             with st.expander("⚔️ 스킬 보기"):
                 for i in range(1, 4):
@@ -3902,7 +3941,7 @@ def page_ranking():
                 st.markdown(f'<div style="text-align: center; font-weight: bold; margin-top: 10px;">{rep["instance"]["name"]}</div>', unsafe_allow_html=True)
                 
                 with st.expander("상세 정보"):
-                    st.markdown(f"HP: {rep['instance']['stats']['hp']}")
+                    st.markdown(f"HP: {rep['instance']['stats']['hp']:,}")
                     st.markdown(f"ATK: {rep['instance']['stats']['atk']}")
                     st.markdown(f"MS: {rep['instance']['stats']['ms']}")
                     
@@ -3944,11 +3983,11 @@ def page_ranking():
             st.caption(f"{rep['instance']['name']}")
         
         with col4:
-            st.markdown(f"💪 **{rep['power_score']}**")
+            st.markdown(f"💪 **{format_korean_number(rep['power_score'])}**")
             with st.expander("상세"):
-                st.markdown(f"HP: {rep['instance']['stats']['hp']}")
-                st.markdown(f"ATK: {rep['instance']['stats']['atk']}")
-                st.markdown(f"MS: {rep['instance']['stats']['ms']}")
+                st.markdown(f"HP: {rep['instance']['stats']['hp']:,}")
+                st.markdown(f"ATK: {rep['instance']['stats']['atk']:,}")
+                st.markdown(f"MS: {rep['instance']['stats']['ms']:,}")
                 
                 st.markdown("**⚔️ 스킬:**")
                 for i in range(1, 4):
@@ -4232,7 +4271,7 @@ def page_battle():
     
     # 대표 캐릭터 찾기
     representative_id = st.session_state.get("representative_id")
-    instance_options = [f"{inst['name']} (전투력: {calc_power(inst)})" for inst in sorted_instances]
+    instance_options = [f"{inst['name']} (전투력: {format_korean_number(calc_power(inst))})" for inst in sorted_instances]
     
     default_idx = 0
     if representative_id:
@@ -4275,7 +4314,7 @@ def page_battle():
         player_power = calc_power(player_instance)
         enemy_power = calc_power(enemy)
         
-        st.metric("전투력 비교", f"{player_power} vs {enemy_power}", 
+        st.metric("전투력 비교", f"{format_korean_number(player_power)} vs {format_korean_number(enemy_power)}", 
                   delta=player_power - enemy_power,
                   delta_color="normal")
     
@@ -4505,15 +4544,15 @@ def page_battle():
                 with col_reward2:
                     st.markdown(f"**{reward['name']}**")
                     reward_power = calculate_power_score(reward["stats"])
-                    st.markdown(f"💪 전투력: **{reward_power}**")
+                    st.markdown(f"💪 전투력: **{format_korean_number(reward_power)}**")
                     
                     col_s1, col_s2, col_s3 = st.columns(3)
                     with col_s1:
-                        st.metric("HP", reward["stats"]["hp"])
+                        st.metric("HP", f"{reward['stats']['hp']:,}")
                     with col_s2:
-                        st.metric("ATK", reward["stats"]["atk"])
+                        st.metric("ATK", f"{reward['stats']['atk']:,}")
                     with col_s3:
-                        st.metric("MS", reward["stats"]["ms"])
+                        st.metric("MS", f"{reward['stats']['ms']:,}")
                     
                     st.markdown("**스킬:**")
                     for i in range(1, 4):
@@ -4550,7 +4589,7 @@ def page_battle():
             player_max_hp = result["player"]["stats"]["hp"]
             hp_percent = (player_final_hp / player_max_hp) * 100 if player_max_hp > 0 else 0
             
-            st.metric("최종 HP", f"{player_final_hp}/{player_max_hp}")
+            st.metric("최종 HP", f"{player_final_hp:,}/{player_max_hp:,}")
             st.progress(hp_percent / 100.0)
             
         with col2:
@@ -4559,7 +4598,7 @@ def page_battle():
             enemy_max_hp = result["enemy"]["stats"]["hp"]
             hp_percent = (enemy_final_hp / enemy_max_hp) * 100 if enemy_max_hp > 0 else 0
             
-            st.metric("최종 HP", f"{enemy_final_hp}/{enemy_max_hp}")
+            st.metric("최종 HP", f"{enemy_final_hp:,}/{enemy_max_hp:,}")
             st.progress(hp_percent / 100.0)
         
         # 전투 로그
@@ -4948,11 +4987,11 @@ def page_season_info():
                                 # 간단한 스탯
                                 stat_col1, stat_col2, stat_col3 = st.columns(3)
                                 with stat_col1:
-                                    st.metric("HP", rep["stats"]["hp"])
+                                    st.metric("HP", f"{rep['stats']['hp']:,}")
                                 with stat_col2:
-                                    st.metric("ATK", rep["stats"]["atk"])
+                                    st.metric("ATK", f"{rep['stats']['atk']:,}")
                                 with stat_col3:
-                                    st.metric("MS", rep["stats"]["ms"])
+                                    st.metric("MS", f"{rep['stats']['ms']:,}")
                             else:
                                 st.caption("대표 유닛 없음")
                 else:
@@ -5104,15 +5143,15 @@ def page_admin():
                         else:
                             power_score = 0
                         
-                        with st.expander(f"#{idx} {inst.get('name', 'Unknown')} - 전투력: {power_score}"):
+                        with st.expander(f"#{idx} {inst.get('name', 'Unknown')} - 전투력: {format_korean_number(power_score)}"):
                             col1, col2 = st.columns(2)
                             with col1:
                                 st.markdown(f"**이름:** {inst.get('name', 'N/A')}")
                                 st.markdown(f"**ID:** {inst.get('id', 'N/A')}")
                             with col2:
-                                st.markdown(f"**HP:** {stats.get('hp', 'N/A')}")
-                                st.markdown(f"**ATK:** {stats.get('atk', 'N/A')}")
-                                st.markdown(f"**MS:** {stats.get('ms', 'N/A')}")
+                                st.markdown(f"**HP:** {stats.get('hp', 'N/A'):,}")
+                                st.markdown(f"**ATK:** {stats.get('atk', 'N/A'):,}")
+                                st.markdown(f"**MS:** {stats.get('ms', 'N/A'):,}")
                             
                             st.markdown("---")
                             
@@ -5211,7 +5250,7 @@ def page_admin():
                         inst_id = inst.get('id', 'N/A')
                         stats = inst.get('stats', {})
                         power_score = calculate_power_score(stats) if stats else 0
-                        label = f"{inst_name} - 전투력: {power_score} - HP:{stats.get('hp')} ATK:{stats.get('atk')} MS:{stats.get('ms')}"
+                        label = f"{inst_name} - 전투력: {format_korean_number(power_score)} - HP:{stats.get('hp'):,} ATK:{stats.get('atk'):,} MS:{stats.get('ms'):,}"
                         instance_options[label] = inst_id
                     
                     selected_inst_label = st.selectbox(
@@ -5236,11 +5275,11 @@ def page_admin():
                             col1, col2 = st.columns(2)
                             with col1:
                                 st.markdown(f"• **이름:** {selected_inst.get('name')}")
-                                st.markdown(f"• **전투력:** {calculate_power_score(stats) if stats else 0}")
+                                st.markdown(f"• **전투력:** {format_korean_number(calculate_power_score(stats) if stats else 0)}")
                             with col2:
-                                st.markdown(f"• **HP:** {stats.get('hp')}")
-                                st.markdown(f"• **ATK:** {stats.get('atk')}")
-                                st.markdown(f"• **MS:** {stats.get('ms')}")
+                                st.markdown(f"• **HP:** {stats.get('hp'):,}")
+                                st.markdown(f"• **ATK:** {stats.get('atk'):,}")
+                                st.markdown(f"• **MS:** {stats.get('ms'):,}")
                             
                             # 외형 정보
                             appearance = selected_inst.get('appearance', {})
@@ -5944,7 +5983,7 @@ def main():
                     st.markdown(f"**{rep_inst['name']}**")
                     rep_stats_col1, rep_stats_col2, rep_stats_col3 = st.columns(3)
                     with rep_stats_col1:
-                        st.metric("HP", rep_inst["stats"]["hp"], label_visibility="visible")
+                        st.metric("HP", f"{rep_inst['stats']['hp']:,}", label_visibility="visible")
                     with rep_stats_col2:
                         st.metric("ATK", rep_inst["stats"]["atk"], label_visibility="visible")
                     with rep_stats_col3:
