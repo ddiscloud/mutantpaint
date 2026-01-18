@@ -2472,7 +2472,8 @@ def end_current_season(to_preseason=False):
                 except Exception as e:
                     print(f"Error resetting {filename}: {e}")
     
-    return current_season + 1
+    # 새 시즌 번호 반환
+    return season_data["current_season"]
 
 def save_game_data():
     """게임 데이터 저장 (Supabase에 저장)"""
