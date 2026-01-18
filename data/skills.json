@@ -862,10 +862,10 @@
     "slot": 3,
     "name": "Perfect Dodge",
     "resource": "armored_legs.svg",
-    "effect": "dodge",
+    "effect": "next_turn_dodge",
     "value": 0.9,
     "cooldown": 5,
-    "desc": "다음 공격 90% 회피"
+    "desc": "다음 상대 공격을 90% 확률로 회피"
   },
   "acc3_rare03": {
     "grade": "Rare",

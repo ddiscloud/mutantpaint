@@ -765,6 +765,8 @@ class BattleInstance:
         self.time_loop = 0  # 타임루프 턴
         self.saved_state = None  # 저장된 상태
         self.next_turn_first_strike = False  # 다음 턴 선공 플래그
+        self.next_turn_dodge_active = False  # 다음 상대 공격 회피 플래그
+        self.next_turn_dodge_chance = 0  # 다음 상대 공격 회피 확률
         
         # 스킬
         self.skills = {}
@@ -889,7 +891,18 @@ class Battle:
         Returns:
             회피 성공 시 메시지, 실패 시 None
         """
-        # 1. 횟수 기반 회피 체크 (우선순위 높음)
+        # 1. 다음 턴 회피 체크 (우선순위 높음)
+        if defender.next_turn_dodge_active and random.random() < defender.next_turn_dodge_chance:
+            defender.next_turn_dodge_active = False
+            defender.next_turn_dodge_chance = 0
+            return f"{defender_name}이(가) 공격을 회피했다! ({int(defender.next_turn_dodge_chance*100)}% 확률)"
+        
+        # 플래그 초기화 (회피 실패 시에도)
+        if defender.next_turn_dodge_active:
+            defender.next_turn_dodge_active = False
+            defender.next_turn_dodge_chance = 0
+        
+        # 2. 횟수 기반 회피 체크
         for buff in defender.buffs:
             if buff.type == "dodge_count" and buff.count > 0:
                 buff.count -= 1
@@ -900,7 +913,7 @@ class Battle:
                     return f"{defender_name}이(가) 공격을 회피했다! (마지막 회피!)"
                 return f"{defender_name}이(가) 공격을 회피했다! (남은 회피: {remaining}회)"
         
-        # 2. 확률 기반 회피 체크
+        # 3. 확률 기반 회피 체크
         dodge_chance = 0
         for buff in defender.buffs:
             if buff.type == "dodge_chance":
@@ -1198,6 +1211,12 @@ class Battle:
             duration = skill.get("duration", 1)
             attacker.add_buff("dodge_chance", skill.get("value", 0.5), duration)
             result += f" {duration}턴간 {int(skill.get('value', 0.5)*100)}% 회피!"
+        
+        elif effect == "next_turn_dodge":
+            # 다음 상대 공격 1회 회피 (확률 기반)
+            attacker.next_turn_dodge_active = True
+            attacker.next_turn_dodge_chance = skill.get("value", 0.9)
+            result += f" 다음 공격 {int(skill.get('value', 0.9)*100)}% 회피!"
         
         elif effect == "reflect":
             duration = skill.get("duration", 2)
