@@ -235,22 +235,37 @@ def get_user_info(username: str) -> Optional[Dict]:
         return None
 
 
-def delete_user(username: str) -> bool:
-    """사용자 계정 삭제"""
+def delete_user(username: str) -> tuple:
+    """사용자 계정 삭제
+    
+    Returns:
+        (success: bool, message: str)
+    """
     try:
         client = get_supabase_client()
         
-        # game_data와 season_history 먼저 삭제
-        client.table("game_data").delete().eq("username", username).execute()
-        client.table("season_history").delete().eq("username", username).execute()
+        # game_data 삭제
+        try:
+            client.table("game_data").delete().eq("username", username).execute()
+            print(f"✅ '{username}'의 게임 데이터 삭제 완료")
+        except Exception as e:
+            print(f"⚠️ 게임 데이터 삭제 실패: {e}")
+        
+        # season_history 삭제
+        try:
+            client.table("season_history").delete().eq("username", username).execute()
+            print(f"✅ '{username}'의 시즌 데이터 삭제 완료")
+        except Exception as e:
+            print(f"⚠️ 시즌 데이터 삭제 실패: {e}")
         
         # 사용자 계정 삭제
         response = client.table("users").delete().eq("username", username).execute()
-        print(f"사용자 '{username}' 삭제 완료")
-        return True
+        print(f"✅ 사용자 '{username}' 삭제 완료")
+        return True, f"사용자 '{username}'이(가) 정상적으로 삭제되었습니다."
     except Exception as e:
-        print(f"사용자 삭제 실패 ({username}): {e}")
-        return False
+        error_msg = str(e)
+        print(f"❌ 사용자 삭제 실패 ({username}): {e}")
+        return False, f"삭제 중 오류 발생: {error_msg}"
 
 
 def get_user_game_stats(username: str) -> Optional[Dict]:

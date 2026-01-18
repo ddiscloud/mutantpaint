@@ -5095,13 +5095,14 @@ def page_admin():
                 if st.button("🗑️ 삭제", type="primary", use_container_width=True):
                     # 공백 제거 후 비교
                     if confirm_text.strip() == delete_username.strip():
-                        if delete_user(delete_username):
-                            st.success(f"✅ 사용자 '{delete_username}'이(가) 삭제되었습니다.")
+                        success, message = delete_user(delete_username)
+                        if success:
+                            st.success(f"✅ {message}")
                             st.info("페이지를 새로고침하면 목록이 업데이트됩니다.")
                             time.sleep(1)
                             st.rerun()
                         else:
-                            st.error(f"❌ 사용자 삭제 중 오류가 발생했습니다.")
+                            st.error(f"❌ {message}")
                     else:
                         st.error(f"❌ 입력한 사용자명이 일치하지 않습니다. 입력: '{confirm_text}' vs 선택: '{delete_username}'")
             
