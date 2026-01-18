@@ -5005,7 +5005,7 @@ def page_admin():
     st.title("👨‍💼 사용자 관리")
     
     # 탭 분할
-    tab1, tab2 = st.tabs(["📊 사용자 목록", "🗑️ 사용자 삭제"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 사용자 목록", "🎮 사용자 개체", "🗑️ 개체 삭제", "🧬 돌연변이 설정", "🗑️ 사용자 삭제"])
     
     with tab1:
         st.markdown("### 모든 사용자")
@@ -5061,6 +5061,200 @@ def page_admin():
                         st.markdown(f"**마지막 업데이트:** {updated}")
     
     with tab2:
+        st.markdown("### 사용자의 보유 개체")
+        
+        from supabase_db import get_all_users, get_user_instances
+        
+        users = get_all_users()
+        
+        if not users:
+            st.info("등록된 사용자가 없습니다.")
+        else:
+            selected_username = st.selectbox(
+                "사용자 선택",
+                [u["username"] for u in users],
+                key="instance_view_user"
+            )
+            
+            if selected_username:
+                instances = get_user_instances(selected_username)
+                
+                if not instances:
+                    st.info(f"'{selected_username}' 사용자가 보유한 개체가 없습니다.")
+                else:
+                    st.success(f"총 {len(instances)}개의 개체 보유중")
+                    
+                    # 개체 목록 표시
+                    for idx, inst in enumerate(instances, 1):
+                        with st.expander(f"#{idx} {inst.get('name', 'Unknown')} (ID: {inst.get('id', 'N/A')})"):
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.markdown(f"**이름:** {inst.get('name', 'N/A')}")
+                                st.markdown(f"**ID:** {inst.get('id', 'N/A')}")
+                                st.markdown(f"**체급:** {inst.get('grade', 'N/A')}")
+                            with col2:
+                                st.markdown(f"**HP:** {inst.get('hp', 'N/A')}")
+                                st.markdown(f"**ATK:** {inst.get('atk', 'N/A')}")
+                                st.markdown(f"**MS:** {inst.get('ms', 'N/A')}")
+                            
+                            # 색상 정보
+                            if "main_color_id" in inst:
+                                st.markdown(f"**Main Color ID:** {inst['main_color_id']}")
+                            if "sub_color_id" in inst:
+                                st.markdown(f"**Sub Color ID:** {inst['sub_color_id']}")
+    
+    with tab3:
+        st.markdown("### 개체 삭제")
+        st.warning("⚠️ 개체를 삭제하면 복구할 수 없습니다.")
+        
+        from supabase_db import get_all_users, get_user_instances, delete_user_instance
+        
+        users = get_all_users()
+        
+        if not users:
+            st.info("등록된 사용자가 없습니다.")
+        else:
+            delete_inst_username = st.selectbox(
+                "사용자 선택",
+                [u["username"] for u in users],
+                key="instance_delete_user"
+            )
+            
+            if delete_inst_username:
+                instances = get_user_instances(delete_inst_username)
+                
+                if not instances:
+                    st.info(f"'{delete_inst_username}' 사용자가 보유한 개체가 없습니다.")
+                else:
+                    st.markdown("---")
+                    
+                    # 개체 선택
+                    instance_options = {}
+                    for inst in instances:
+                        inst_name = inst.get('name', 'Unknown')
+                        inst_id = inst.get('id', 'N/A')
+                        label = f"{inst_name} (Lv.{inst.get('level', 1)}) - HP:{inst.get('hp')} ATK:{inst.get('atk')} MS:{inst.get('ms')}"
+                        instance_options[label] = inst_id
+                    
+                    selected_inst_label = st.selectbox(
+                        "삭제할 개체 선택",
+                        list(instance_options.keys()),
+                        key="delete_instance_select"
+                    )
+                    
+                    if selected_inst_label:
+                        selected_inst_id = instance_options[selected_inst_label]
+                        
+                        st.markdown("---")
+                        st.info(f"**선택된 개체:** {selected_inst_label}")
+                        st.warning(f"🔒 삭제를 확인하려면 'DELETE'를 입력하세요:")
+                        
+                        confirm_delete = st.text_input(
+                            "확인 입력",
+                            placeholder="DELETE",
+                            key="delete_instance_confirm"
+                        ).strip().upper()
+                        
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            if st.button("🗑️ 삭제", type="primary", use_container_width=True):
+                                if confirm_delete == "DELETE":
+                                    success, message = delete_user_instance(delete_inst_username, selected_inst_id)
+                                    if success:
+                                        st.success(f"✅ {message}")
+                                        time.sleep(1)
+                                        st.rerun()
+                                    else:
+                                        st.error(f"❌ {message}")
+                                else:
+                                    st.error("❌ 'DELETE'를 정확히 입력해주세요.")
+                        
+                        with col2:
+                            if st.button("취소", use_container_width=True):
+                                st.info("취소되었습니다.")
+    
+    with tab4:
+        st.markdown("### 돌연변이 설정 변경")
+        st.info("사용자의 돌연변이 확률 보너스와 최대 연쇄 횟수를 변경할 수 있습니다.")
+        
+        from supabase_db import get_all_users, update_user_mutation_settings, get_user_instances
+        
+        users = get_all_users()
+        
+        if not users:
+            st.info("등록된 사용자가 없습니다.")
+        else:
+            mutation_username = st.selectbox(
+                "사용자 선택",
+                [u["username"] for u in users],
+                key="mutation_user_select"
+            )
+            
+            if mutation_username:
+                # 현재 설정값 조회
+                instances = get_user_instances(mutation_username)
+                
+                st.markdown("---")
+                st.markdown(f"**선택된 사용자:** {mutation_username}")
+                
+                # 설정 변경
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown("**돌연변이 확률 보너스**")
+                    mutation_bonus = st.slider(
+                        "보너스 설정",
+                        min_value=0.0,
+                        max_value=0.5,
+                        value=0.0,
+                        step=0.05,
+                        help="교배 시 돌연변이 발생 확률에 추가됩니다. (예: 0.1 = +10%)",
+                        key="mutation_bonus_slider"
+                    )
+                
+                with col2:
+                    st.markdown("**최대 연쇄 돌연변이 횟수**")
+                    max_chain_mutations = st.selectbox(
+                        "최대 연쇄 횟수",
+                        options=[3, 4, 5],
+                        index=0,
+                        help="교배 시 최대 몇 번까지 연쇄 돌연변이가 발생할 수 있는지 설정합니다.",
+                        key="max_chain_slider"
+                    )
+                
+                # 현재 설정 표시
+                st.markdown("---")
+                st.info(f"""
+                **변경할 설정 정보**
+                - 돌연변이 보너스: +{mutation_bonus*100:.0f}%
+                - 1차 돌연변이: {(0.50 * (1 + mutation_bonus))*100:.1f}%
+                - 2차 연쇄: {(0.40 * (1 + mutation_bonus))*100:.1f}%
+                - 3차 연쇄: {(0.20 * (1 + mutation_bonus))*100:.1f}%
+                {f"- 4차 연쇄: {(0.10 * (1 + mutation_bonus))*100:.1f}% (활성)" if max_chain_mutations >= 4 else "- 4차 연쇄: 비활성"}
+                {f"- 5차 연쇄: {(0.05 * (1 + mutation_bonus))*100:.1f}% (활성)" if max_chain_mutations >= 5 else "- 5차 연쇄: 비활성"}
+                - 최대 연쇄: {max_chain_mutations}회
+                """)
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("✅ 변경", type="primary", use_container_width=True):
+                        success, message = update_user_mutation_settings(
+                            mutation_username, 
+                            mutation_bonus, 
+                            max_chain_mutations
+                        )
+                        if success:
+                            st.success(f"✅ {message}")
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error(f"❌ {message}")
+                
+                with col2:
+                    if st.button("취소", use_container_width=True):
+                        st.info("취소되었습니다.")
+    
+    with tab5:
         st.markdown("### 사용자 삭제")
         st.warning("⚠️ 사용자를 삭제하면 해당 계정과 모든 게임 데이터가 영구 삭제됩니다.")
         

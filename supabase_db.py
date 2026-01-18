@@ -293,6 +293,105 @@ def get_user_game_stats(username: str) -> Optional[Dict]:
         print(f"게임 통계 조회 실패 ({username}): {e}")
         return None
 
+
+def get_user_instances(username: str) -> List[Dict]:
+    """사용자의 모든 개체 조회"""
+    try:
+        client = get_supabase_client()
+        response = client.table("game_data").select("data").eq("username", username).execute()
+        
+        if response.data and len(response.data) > 0:
+            game_data = response.data[0].get("data", {})
+            instances = game_data.get("instances", [])
+            return instances if isinstance(instances, list) else []
+        return []
+    except Exception as e:
+        print(f"개체 목록 조회 실패 ({username}): {e}")
+        return []
+
+
+def delete_user_instance(username: str, instance_id: str) -> tuple:
+    """사용자의 특정 개체 삭제
+    
+    Returns:
+        (success: bool, message: str)
+    """
+    try:
+        client = get_supabase_client()
+        response = client.table("game_data").select("data").eq("username", username).execute()
+        
+        if not response.data or len(response.data) == 0:
+            return False, f"사용자 '{username}'의 게임 데이터를 찾을 수 없습니다."
+        
+        game_data = response.data[0].get("data", {})
+        instances = game_data.get("instances", [])
+        
+        # 개체 찾기
+        original_count = len(instances)
+        instances = [inst for inst in instances if inst.get("id") != instance_id]
+        
+        if len(instances) == original_count:
+            return False, f"ID '{instance_id}'인 개체를 찾을 수 없습니다."
+        
+        # 업데이트
+        game_data["instances"] = instances
+        client.table("game_data").update({
+            "data": game_data
+        }).eq("username", username).execute()
+        
+        print(f"✅ 사용자 '{username}'의 개체 '{instance_id}' 삭제 완료")
+        return True, f"개체가 정상적으로 삭제되었습니다."
+    except Exception as e:
+        error_msg = str(e)
+        print(f"❌ 개체 삭제 실패 ({username}, {instance_id}): {e}")
+        return False, f"삭제 중 오류 발생: {error_msg}"
+
+
+def update_user_mutation_settings(username: str, mutation_bonus: float, max_chain_mutations: int) -> tuple:
+    """사용자의 돌연변이 설정 변경
+    
+    Args:
+        username: 사용자명
+        mutation_bonus: 돌연변이 확률 보너스 (0.0 ~ 0.5)
+        max_chain_mutations: 최대 연쇄 돌연변이 횟수 (3, 4, 5)
+    
+    Returns:
+        (success: bool, message: str)
+    """
+    try:
+        client = get_supabase_client()
+        response = client.table("game_data").select("data").eq("username", username).execute()
+        
+        if not response.data or len(response.data) == 0:
+            return False, f"사용자 '{username}'의 게임 데이터를 찾을 수 없습니다."
+        
+        game_data = response.data[0].get("data", {})
+        
+        # 값 유효성 검사
+        if mutation_bonus < 0 or mutation_bonus > 0.5:
+            return False, "돌연변이 보너스는 0.0 ~ 0.5 사이여야 합니다."
+        
+        if max_chain_mutations not in [3, 4, 5]:
+            return False, "최대 연쇄 횟수는 3, 4, 5 중 하나여야 합니다."
+        
+        # 업데이트
+        old_bonus = game_data.get("mutation_bonus", 0.0)
+        old_chain = game_data.get("max_chain_mutations", 3)
+        
+        game_data["mutation_bonus"] = mutation_bonus
+        game_data["max_chain_mutations"] = max_chain_mutations
+        
+        client.table("game_data").update({
+            "data": game_data
+        }).eq("username", username).execute()
+        
+        print(f"✅ '{username}'의 돌연변이 설정 변경: 보너스 {old_bonus} → {mutation_bonus}, 연쇄 {old_chain} → {max_chain_mutations}")
+        return True, f"설정이 변경되었습니다. (보너스: {mutation_bonus*100:.0f}%, 최대 연쇄: {max_chain_mutations}회)"
+    except Exception as e:
+        error_msg = str(e)
+        print(f"❌ 돌연변이 설정 변경 실패 ({username}): {e}")
+        return False, f"변경 중 오류 발생: {error_msg}"
+
 # ============================================================================
 # 초기화 함수
 # ============================================================================
