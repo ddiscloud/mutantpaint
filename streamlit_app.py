@@ -5168,7 +5168,11 @@ def page_breed():
         
         st.session_state.new_discoveries = new_discoveries
         st.session_state.last_breed_time = time.time()
-        save_game_data()
+        
+        # SVG 미리 렌더링하여 캐싱 (결과 표시 속도 향상)
+        _ = get_instance_svg(result, size=120)
+        
+        # save_game_data() 제거 - 결과 저장 시에만 DB 저장
         
         # 개체 목록 페이지 초기화 (최신 개체가 보이도록)
         if "list_page" in st.session_state:
@@ -5233,7 +5237,6 @@ def page_breed():
                 
                 save_game_data()
                 st.success("새 개체가 추가되었습니다!")
-                time.sleep(1)
                 st.rerun()
         
         with col2:
@@ -5242,9 +5245,8 @@ def page_breed():
                 st.session_state.last_breed_time = None
                 if "new_discoveries" in st.session_state:
                     del st.session_state.new_discoveries
-                save_game_data()
+                # save_game_data() 제거 - 버릴 때는 DB 저장 불필요
                 st.info("결과를 버렸습니다.")
-                time.sleep(1)
                 st.rerun()
 
 def page_season_info():
