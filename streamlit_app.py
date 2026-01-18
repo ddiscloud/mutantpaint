@@ -5079,18 +5079,22 @@ def page_admin():
             
             # 확인 메커니즘
             st.markdown("---")
-            st.info("🔒 삭제를 확인하려면 사용자명을 정확히 입력하세요:")
+            
+            # 선택된 사용자명 표시
+            st.info(f"**선택된 사용자:** `{delete_username}`")
+            st.warning(f"🔒 이 계정을 삭제하려면 아래에 정확히 '{delete_username}'을 입력하세요:")
             
             confirm_text = st.text_input(
-                "사용자명 입력",
-                placeholder="삭제를 확인하기 위해 사용자명을 입력하세요",
+                f"'{delete_username}'을 입력하세요",
+                placeholder=delete_username,
                 key="delete_confirm_input"
-            )
+            ).strip()
             
             col1, col2 = st.columns(2)
             with col1:
                 if st.button("🗑️ 삭제", type="primary", use_container_width=True):
-                    if confirm_text == delete_username:
+                    # 공백 제거 후 비교
+                    if confirm_text.strip() == delete_username.strip():
                         if delete_user(delete_username):
                             st.success(f"✅ 사용자 '{delete_username}'이(가) 삭제되었습니다.")
                             st.info("페이지를 새로고침하면 목록이 업데이트됩니다.")
@@ -5099,7 +5103,7 @@ def page_admin():
                         else:
                             st.error(f"❌ 사용자 삭제 중 오류가 발생했습니다.")
                     else:
-                        st.error("❌ 입력한 사용자명이 일치하지 않습니다.")
+                        st.error(f"❌ 입력한 사용자명이 일치하지 않습니다. 입력: '{confirm_text}' vs 선택: '{delete_username}'")
             
             with col2:
                 if st.button("취소", use_container_width=True):
