@@ -106,8 +106,6 @@ def release_file_lock(file_handle):
 def create_backup(filepath: str):
     """파일 백업 생성 (레거시 함수 - Supabase 사용으로 불필요)"""
     pass  # 아무 작업 안 함
-        except Exception as e:
-            pass  # 백업 실패해도 계속 진행
 
 # ============================================================================
 # 성능 최적화 함수
