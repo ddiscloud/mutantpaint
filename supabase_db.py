@@ -393,6 +393,179 @@ def update_user_mutation_settings(username: str, mutation_bonus: float, max_chai
         return False, f"변경 중 오류 발생: {error_msg}"
 
 # ============================================================================
+# 랜덤박스 템플릿 관리
+# ============================================================================
+
+def load_box_templates(active_only: bool = True) -> List[Dict]:
+    """랜덤박스 템플릿 목록 로드"""
+    try:
+        client = get_supabase_client()
+        query = client.table("box_templates").select("*")
+        if active_only:
+            query = query.eq("is_active", True)
+        response = query.order("created_at", desc=True).execute()
+        return response.data
+    except Exception as e:
+        print(f"❌ 박스 템플릿 로드 실패: {e}")
+        return []
+
+
+def get_box_template(template_id: str) -> Optional[Dict]:
+    """특정 랜덤박스 템플릿 로드"""
+    try:
+        client = get_supabase_client()
+        response = client.table("box_templates").select("*").eq("id", template_id).execute()
+        if response.data:
+            return response.data[0]
+        return None
+    except Exception as e:
+        print(f"❌ 박스 템플릿 로드 실패 ({template_id}): {e}")
+        return None
+
+
+def create_box_template(template_id: str, name: str, description: str, 
+                       conditions: dict, created_by: str) -> bool:
+    """새 랜덤박스 템플릿 생성"""
+    try:
+        client = get_supabase_client()
+        client.table("box_templates").insert({
+            "id": template_id,
+            "name": name,
+            "description": description,
+            "conditions": conditions,
+            "created_by": created_by,
+            "is_active": True
+        }).execute()
+        print(f"✅ 박스 템플릿 생성: {name} ({template_id})")
+        return True
+    except Exception as e:
+        print(f"❌ 박스 템플릿 생성 실패: {e}")
+        return False
+
+
+def update_box_template(template_id: str, name: str = None, description: str = None,
+                       conditions: dict = None, is_active: bool = None) -> bool:
+    """랜덤박스 템플릿 업데이트"""
+    try:
+        client = get_supabase_client()
+        update_data = {}
+        if name is not None:
+            update_data["name"] = name
+        if description is not None:
+            update_data["description"] = description
+        if conditions is not None:
+            update_data["conditions"] = conditions
+        if is_active is not None:
+            update_data["is_active"] = is_active
+        
+        client.table("box_templates").update(update_data).eq("id", template_id).execute()
+        print(f"✅ 박스 템플릿 업데이트: {template_id}")
+        return True
+    except Exception as e:
+        print(f"❌ 박스 템플릿 업데이트 실패: {e}")
+        return False
+
+
+def delete_box_template(template_id: str) -> bool:
+    """랜덤박스 템플릿 삭제"""
+    try:
+        client = get_supabase_client()
+        client.table("box_templates").delete().eq("id", template_id).execute()
+        print(f"✅ 박스 템플릿 삭제: {template_id}")
+        return True
+    except Exception as e:
+        print(f"❌ 박스 템플릿 삭제 실패: {e}")
+        return False
+
+
+# ============================================================================
+# 우편함 관리
+# ============================================================================
+
+def load_mailbox(username: str, unclaimed_only: bool = True) -> List[Dict]:
+    """사용자 우편함 로드"""
+    try:
+        client = get_supabase_client()
+        query = client.table("mailbox").select("*").eq("user_id", username)
+        if unclaimed_only:
+            query = query.eq("claimed", False)
+        response = query.order("created_at", desc=True).execute()
+        return response.data
+    except Exception as e:
+        print(f"❌ 우편함 로드 실패 ({username}): {e}")
+        return []
+
+
+def send_mail(user_id: str, mail_type: str, message: str,
+             instance_data: dict = None, box_template_id: str = None) -> bool:
+    """우편 발송"""
+    try:
+        client = get_supabase_client()
+        import uuid
+        
+        mail_data = {
+            "id": str(uuid.uuid4()),
+            "user_id": user_id,
+            "type": mail_type,
+            "message": message,
+            "claimed": False
+        }
+        
+        if mail_type == "instance":
+            mail_data["instance_data"] = instance_data
+        elif mail_type == "box":
+            mail_data["box_template_id"] = box_template_id
+        
+        client.table("mailbox").insert(mail_data).execute()
+        print(f"✅ 우편 발송: {user_id} <- {mail_type}")
+        return True
+    except Exception as e:
+        print(f"❌ 우편 발송 실패: {e}")
+        return False
+
+
+def claim_mail(mail_id: str) -> Optional[Dict]:
+    """우편 수령 (데이터 반환 후 claimed=True)"""
+    try:
+        client = get_supabase_client()
+        
+        # 우편 조회
+        response = client.table("mailbox").select("*").eq("id", mail_id).execute()
+        if not response.data:
+            return None
+        
+        mail = response.data[0]
+        
+        # 이미 수령했으면 None
+        if mail["claimed"]:
+            return None
+        
+        # 수령 처리
+        client.table("mailbox").update({
+            "claimed": True,
+            "claimed_at": datetime.now().isoformat()
+        }).eq("id", mail_id).execute()
+        
+        print(f"✅ 우편 수령: {mail_id}")
+        return mail
+    except Exception as e:
+        print(f"❌ 우편 수령 실패: {e}")
+        return None
+
+
+def delete_mail(mail_id: str) -> bool:
+    """우편 삭제"""
+    try:
+        client = get_supabase_client()
+        client.table("mailbox").delete().eq("id", mail_id).execute()
+        print(f"✅ 우편 삭제: {mail_id}")
+        return True
+    except Exception as e:
+        print(f"❌ 우편 삭제 실패: {e}")
+        return False
+
+
+# ============================================================================
 # 초기화 함수
 # ============================================================================
 

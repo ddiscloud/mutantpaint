@@ -20,7 +20,11 @@ from supabase_db import (
     check_user_exists, create_user,
     get_user_password_hash, load_season_history as load_season_history_db,
     save_season_history as save_season_history_db,
-    init_supabase_db
+    init_supabase_db,
+    # 랜덤박스 & 우편함
+    load_box_templates, get_box_template, create_box_template, 
+    update_box_template, delete_box_template,
+    load_mailbox, send_mail, claim_mail, delete_mail
 )
 
 # 환경 변수 로드
@@ -710,6 +714,143 @@ def breed(parent1: Dict, parent2: Dict) -> Dict:
         created_by="Breed",
         mutation_count=mutation_count,
         mutation_fields=mutation_fields
+    )
+
+# ============================================================================
+# 랜덤박스 시스템
+# ============================================================================
+
+def open_random_box(template_id: str, created_by: str = "RandomBox") -> Optional[Dict]:
+    """랜덤박스 개봉 - 조건에 맞는 개체 생성"""
+    template = get_box_template(template_id)
+    if not template:
+        return None
+    
+    conditions = template["conditions"]
+    
+    # 능력치 랜덤 생성
+    stat_ranges = conditions.get("stat_ranges", {})
+    hp = random.randint(
+        stat_ranges.get("hp", {}).get("min", 10),
+        stat_ranges.get("hp", {}).get("max", 100)
+    )
+    atk = random.randint(
+        stat_ranges.get("atk", {}).get("min", 1),
+        stat_ranges.get("atk", {}).get("max", 10)
+    )
+    ms = random.randint(
+        stat_ranges.get("ms", {}).get("min", 1),
+        stat_ranges.get("ms", {}).get("max", 10)
+    )
+    
+    # 외형 요소 생성 (등급 가중치 기반)
+    grades_config = conditions.get("grades", {})
+    
+    def select_appearance_item(item_type: str, allowed_grades: List[str]) -> Dict:
+        """허용된 등급 내에서 가중치 기반 선택"""
+        if not allowed_grades:
+            # 등급 제한이 없으면 Normal 기본값
+            allowed_grades = ["Normal"]
+        
+        # 허용된 등급의 아이템들 수집
+        candidates = []
+        if item_type in ["main_color", "sub_color", "pattern_color"]:
+            for color_id, color_data in COLOR_MASTER.items():
+                if color_data["grade"] in allowed_grades:
+                    candidates.append((color_id, color_data["grade"]))
+        elif item_type == "pattern":
+            for pattern_id, pattern_data in PATTERN_MASTER.items():
+                if pattern_data["grade"] in allowed_grades:
+                    candidates.append((pattern_id, pattern_data["grade"]))
+        
+        if not candidates:
+            # 후보가 없으면 Normal 첫번째 아이템
+            if item_type == "pattern":
+                return {"grade": "Normal", "id": "normal01"}
+            else:
+                return {"grade": "Normal", "id": "normal01"}
+        
+        # 등급별 가중치 계산
+        weighted_candidates = []
+        for item_id, grade in candidates:
+            weight = GRADE_WEIGHTS.get(grade, 1)
+            weighted_candidates.append((item_id, grade, weight))
+        
+        # 가중치 기반 랜덤 선택
+        total_weight = sum(w for _, _, w in weighted_candidates)
+        rand_val = random.uniform(0, total_weight)
+        cumulative = 0
+        
+        for item_id, grade, weight in weighted_candidates:
+            cumulative += weight
+            if rand_val <= cumulative:
+                return {"grade": grade, "id": item_id}
+        
+        # 폴백 (이론적으로 도달 불가)
+        return {"grade": weighted_candidates[0][1], "id": weighted_candidates[0][0]}
+    
+    def select_skill_item(slot: int, allowed_grades: List[str]) -> Optional[Dict]:
+        """허용된 등급 내에서 스킬 선택"""
+        if not allowed_grades or allowed_grades == [None]:
+            return None
+        
+        # 허용된 등급의 스킬들 수집
+        candidates = []
+        for skill_id, skill_data in SKILL_MASTER.items():
+            if skill_data.get("slot") == slot and skill_data["grade"] in allowed_grades:
+                candidates.append((skill_id, skill_data["grade"]))
+        
+        if not candidates:
+            return None
+        
+        # 등급별 가중치 계산
+        weighted_candidates = []
+        for skill_id, grade in candidates:
+            weight = GRADE_WEIGHTS.get(grade, 1)
+            weighted_candidates.append((skill_id, grade, weight))
+        
+        # 가중치 기반 랜덤 선택
+        total_weight = sum(w for _, _, w in weighted_candidates)
+        rand_val = random.uniform(0, total_weight)
+        cumulative = 0
+        
+        for skill_id, grade, weight in weighted_candidates:
+            cumulative += weight
+            if rand_val <= cumulative:
+                return {"grade": grade, "id": skill_id}
+        
+        return {"grade": weighted_candidates[0][1], "id": weighted_candidates[0][0]}
+    
+    # 외형 생성
+    main_color = select_appearance_item("main_color", grades_config.get("main_color", ["Normal"]))
+    sub_color = select_appearance_item("sub_color", grades_config.get("sub_color", ["Normal"]))
+    pattern_color = select_appearance_item("pattern_color", grades_config.get("pattern_color", ["Normal"]))
+    pattern = select_appearance_item("pattern", grades_config.get("pattern", ["Normal"]))
+    
+    # 스킬 생성
+    accessory_1 = select_skill_item(1, grades_config.get("accessory_1"))
+    accessory_2 = select_skill_item(2, grades_config.get("accessory_2"))
+    accessory_3 = select_skill_item(3, grades_config.get("accessory_3"))
+    
+    # 개체 생성
+    box_counter = st.session_state.get("box_counter", 0) + 1
+    st.session_state.box_counter = box_counter
+    
+    return create_instance(
+        hp=hp,
+        atk=atk,
+        ms=ms,
+        main_color=main_color,
+        sub_color=sub_color,
+        pattern_color=pattern_color,
+        pattern=pattern,
+        accessory_1=accessory_1,
+        accessory_2=accessory_2,
+        accessory_3=accessory_3,
+        name=f"Box {box_counter}",
+        created_by=created_by,
+        mutation_count=0,
+        mutation_fields=[]
     )
 
 # ============================================================================
@@ -2905,6 +3046,18 @@ def page_home():
         st.session_state.page = "season_info"
         st.rerun()
     
+    # 우편함 버튼 (알림 표시)
+    username = st.session_state.get("current_user")
+    unclaimed_count = 0
+    if username:
+        mails = load_mailbox(username, unclaimed_only=True)
+        unclaimed_count = len(mails)
+    
+    mailbox_label = f"📬 우편함 ({unclaimed_count})" if unclaimed_count > 0 else "📬 우편함"
+    if st.button(mailbox_label, use_container_width=True, type="primary" if unclaimed_count > 0 else "secondary"):
+        st.session_state.page = "mailbox"
+        st.rerun()
+    
     col1, col2, col3, col4, col5, col6 = st.columns(6)
     with col1:
         if st.button("📋 개체 목록", use_container_width=True):
@@ -5095,7 +5248,10 @@ def page_admin():
     st.title("👨‍💼 사용자 관리")
     
     # 탭 분할
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 사용자 목록", "🎮 사용자 개체", "🗑️ 개체 삭제", "🧬 돌연변이 설정", "🗑️ 사용자 삭제"])
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+        "📊 사용자 목록", "🎮 사용자 개체", "🗑️ 개체 삭제", "🧬 돌연변이 설정", 
+        "🗑️ 사용자 삭제", "📬 우편 지급", "🎁 랜덤박스 관리"
+    ])
     
     with tab1:
         st.markdown("### 모든 사용자")
@@ -5531,6 +5687,438 @@ def page_admin():
             with col2:
                 if st.button("취소", use_container_width=True, key="delete_user_cancel"):
                     st.info("취소되었습니다.")
+    
+    with tab6:
+        st.markdown("### 📬 우편 지급")
+        st.write("특정 사용자에게 개체 또는 랜덤박스를 우편으로 발송합니다.")
+        
+        from supabase_db import get_all_users
+        
+        users = get_all_users()
+        
+        if not users:
+            st.info("등록된 사용자가 없습니다.")
+        else:
+            # 수신자 선택
+            recipient = st.selectbox(
+                "수신 사용자",
+                [u["username"] for u in users],
+                key="mail_recipient"
+            )
+            
+            # 우편 유형 선택
+            mail_type = st.radio(
+                "우편 유형",
+                ["개체 직접 지급", "랜덤박스 지급"],
+                key="mail_type"
+            )
+            
+            message = st.text_input(
+                "메시지",
+                value=f"운영자 지급",
+                key="mail_message"
+            )
+            
+            if mail_type == "개체 직접 지급":
+                st.markdown("#### 개체 설정")
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    hp = st.number_input("HP", min_value=1, max_value=100000, value=100, key="mail_hp")
+                with col2:
+                    atk = st.number_input("ATK", min_value=1, max_value=10000, value=10, key="mail_atk")
+                with col3:
+                    ms = st.number_input("MS", min_value=1, max_value=1000, value=10, key="mail_ms")
+                
+                # 외형 선택
+                st.markdown("#### 외형")
+                
+                def grade_selector(label: str, key: str) -> str:
+                    return st.selectbox(label, ["Normal", "Rare", "Epic", "Unique", "Legendary", "Mystic"], key=key)
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    main_grade = grade_selector("Main Color 등급", "mail_main_grade")
+                    sub_grade = grade_selector("Sub Color 등급", "mail_sub_grade")
+                    pattern_color_grade = grade_selector("Pattern Color 등급", "mail_pattern_color_grade")
+                    pattern_grade = grade_selector("Pattern 등급", "mail_pattern_grade")
+                
+                with col2:
+                    main_ids = get_color_ids_by_grade(main_grade)
+                    main_color_id = st.selectbox("Main Color", main_ids, key="mail_main_id")
+                    
+                    sub_ids = get_color_ids_by_grade(sub_grade)
+                    sub_color_id = st.selectbox("Sub Color", sub_ids, key="mail_sub_id")
+                    
+                    pattern_color_ids = get_color_ids_by_grade(pattern_color_grade)
+                    pattern_color_id = st.selectbox("Pattern Color", pattern_color_ids, key="mail_pattern_color_id")
+                    
+                    pattern_ids = get_pattern_ids_by_grade(pattern_grade)
+                    pattern_id = st.selectbox("Pattern", pattern_ids, key="mail_pattern_id")
+                
+                # 스킬 선택
+                st.markdown("#### 스킬")
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    acc1_enabled = st.checkbox("Accessory 1", value=True, key="mail_acc1_enabled")
+                    if acc1_enabled:
+                        acc1_grade = grade_selector("등급", "mail_acc1_grade")
+                        acc1_ids = get_skill_ids_by_grade_and_slot(acc1_grade, 1)
+                        acc1_id = st.selectbox("스킬", acc1_ids, format_func=lambda x: SKILL_MASTER[x]["name"], key="mail_acc1_id")
+                
+                with col2:
+                    acc2_enabled = st.checkbox("Accessory 2", value=False, key="mail_acc2_enabled")
+                    if acc2_enabled:
+                        acc2_grade = grade_selector("등급", "mail_acc2_grade")
+                        acc2_ids = get_skill_ids_by_grade_and_slot(acc2_grade, 2)
+                        acc2_id = st.selectbox("스킬", acc2_ids, format_func=lambda x: SKILL_MASTER[x]["name"], key="mail_acc2_id")
+                
+                with col3:
+                    acc3_enabled = st.checkbox("Accessory 3", value=False, key="mail_acc3_enabled")
+                    if acc3_enabled:
+                        acc3_grade = grade_selector("등급", "mail_acc3_grade")
+                        acc3_ids = get_skill_ids_by_grade_and_slot(acc3_grade, 3)
+                        acc3_id = st.selectbox("스킬", acc3_ids, format_func=lambda x: SKILL_MASTER[x]["name"], key="mail_acc3_id")
+                
+                instance_name = st.text_input("개체 이름", value="운영자 지급", key="mail_instance_name")
+                
+                if st.button("📤 개체 발송", use_container_width=True):
+                    # 개체 생성
+                    instance = create_instance(
+                        hp=hp, atk=atk, ms=ms,
+                        main_color={"grade": main_grade, "id": main_color_id},
+                        sub_color={"grade": sub_grade, "id": sub_color_id},
+                        pattern_color={"grade": pattern_color_grade, "id": pattern_color_id},
+                        pattern={"grade": pattern_grade, "id": pattern_id},
+                        accessory_1={"grade": acc1_grade, "id": acc1_id} if acc1_enabled else None,
+                        accessory_2={"grade": acc2_grade, "id": acc2_id} if acc2_enabled else None,
+                        accessory_3={"grade": acc3_grade, "id": acc3_id} if acc3_enabled else None,
+                        name=instance_name,
+                        created_by="Admin"
+                    )
+                    
+                    # 우편 발송
+                    if send_mail(recipient, "instance", message, instance_data=instance):
+                        st.success(f"✅ '{recipient}'에게 개체를 발송했습니다!")
+                    else:
+                        st.error("❌ 우편 발송에 실패했습니다.")
+            
+            else:  # 랜덤박스 지급
+                st.markdown("#### 랜덤박스 선택")
+                
+                templates = load_box_templates(active_only=True)
+                
+                if not templates:
+                    st.warning("활성화된 랜덤박스 템플릿이 없습니다. '랜덤박스 관리' 탭에서 생성하세요.")
+                else:
+                    template_options = {f"{t['name']} ({t['id']})": t['id'] for t in templates}
+                    selected_template_label = st.selectbox(
+                        "랜덤박스 템플릿",
+                        list(template_options.keys()),
+                        key="mail_box_template"
+                    )
+                    selected_template_id = template_options[selected_template_label]
+                    
+                    # 템플릿 정보 표시
+                    selected_template = get_box_template(selected_template_id)
+                    if selected_template:
+                        st.info(f"**설명**: {selected_template.get('description', '없음')}")
+                        
+                        # 조건 요약
+                        conditions = selected_template.get("conditions", {})
+                        stat_ranges = conditions.get("stat_ranges", {})
+                        
+                        if stat_ranges:
+                            st.write("**능력치 범위**:")
+                            st.write(f"- HP: {stat_ranges.get('hp', {}).get('min', 0)} ~ {stat_ranges.get('hp', {}).get('max', 0)}")
+                            st.write(f"- ATK: {stat_ranges.get('atk', {}).get('min', 0)} ~ {stat_ranges.get('atk', {}).get('max', 0)}")
+                            st.write(f"- MS: {stat_ranges.get('ms', {}).get('min', 0)} ~ {stat_ranges.get('ms', {}).get('max', 0)}")
+                    
+                    if st.button("📤 랜덤박스 발송", use_container_width=True):
+                        if send_mail(recipient, "box", message, box_template_id=selected_template_id):
+                            st.success(f"✅ '{recipient}'에게 랜덤박스를 발송했습니다!")
+                        else:
+                            st.error("❌ 우편 발송에 실패했습니다.")
+    
+    with tab7:
+        st.markdown("### 🎁 랜덤박스 관리")
+        
+        subtab1, subtab2, subtab3 = st.tabs(["📋 템플릿 목록", "➕ 새 템플릿", "✏️ 템플릿 수정"])
+        
+        with subtab1:
+            st.markdown("#### 등록된 랜덤박스 템플릿")
+            
+            templates = load_box_templates(active_only=False)
+            
+            if not templates:
+                st.info("등록된 템플릿이 없습니다.")
+            else:
+                for template in templates:
+                    with st.expander(f"{'✅' if template['is_active'] else '❌'} {template['name']} ({template['id']})"):
+                        st.write(f"**설명**: {template.get('description', '없음')}")
+                        st.write(f"**생성자**: {template.get('created_by', '?')}")
+                        st.write(f"**생성일**: {template.get('created_at', '?')}")
+                        st.write(f"**활성화**: {'예' if template['is_active'] else '아니오'}")
+                        
+                        # 조건 표시
+                        conditions = template.get("conditions", {})
+                        st.json(conditions)
+                        
+                        # 활성화/비활성화 토글
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            new_status = not template['is_active']
+                            button_label = "🔴 비활성화" if template['is_active'] else "🟢 활성화"
+                            if st.button(button_label, key=f"toggle_{template['id']}"):
+                                if update_box_template(template['id'], is_active=new_status):
+                                    st.success(f"✅ 템플릿이 {'활성화' if new_status else '비활성화'}되었습니다.")
+                                    st.rerun()
+                        
+                        with col2:
+                            if st.button("🗑️ 삭제", key=f"delete_{template['id']}"):
+                                if delete_box_template(template['id']):
+                                    st.success("✅ 템플릿이 삭제되었습니다.")
+                                    st.rerun()
+        
+        with subtab2:
+            st.markdown("#### 새 랜덤박스 템플릿 생성")
+            
+            box_name = st.text_input("박스 이름", key="new_box_name")
+            box_desc = st.text_area("설명", key="new_box_desc")
+            
+            st.markdown("##### 능력치 범위")
+            col1, col2 = st.columns(2)
+            with col1:
+                hp_min = st.number_input("HP 최소", min_value=1, value=20, key="new_hp_min")
+                atk_min = st.number_input("ATK 최소", min_value=1, value=2, key="new_atk_min")
+                ms_min = st.number_input("MS 최소", min_value=1, value=2, key="new_ms_min")
+            with col2:
+                hp_max = st.number_input("HP 최대", min_value=1, value=100, key="new_hp_max")
+                atk_max = st.number_input("ATK 최대", min_value=1, value=10, key="new_atk_max")
+                ms_max = st.number_input("MS 최대", min_value=1, value=10, key="new_ms_max")
+            
+            st.markdown("##### 외형 등급 제한")
+            
+            all_grades = ["Normal", "Rare", "Epic", "Unique", "Legendary", "Mystic"]
+            
+            main_color_grades = st.multiselect("Main Color 허용 등급", all_grades, default=["Normal", "Rare"], key="new_main_grades")
+            sub_color_grades = st.multiselect("Sub Color 허용 등급", all_grades, default=["Normal", "Rare"], key="new_sub_grades")
+            pattern_color_grades = st.multiselect("Pattern Color 허용 등급", all_grades, default=["Normal", "Rare"], key="new_pattern_color_grades")
+            pattern_grades = st.multiselect("Pattern 허용 등급", all_grades, default=["Normal", "Rare"], key="new_pattern_grades")
+            
+            st.markdown("##### 스킬 등급 제한 (빈 선택 = 지급 안함)")
+            
+            acc1_grades = st.multiselect("Accessory 1 허용 등급", all_grades, default=["Normal"], key="new_acc1_grades")
+            acc2_grades = st.multiselect("Accessory 2 허용 등급", all_grades, default=[], key="new_acc2_grades")
+            acc3_grades = st.multiselect("Accessory 3 허용 등급", all_grades, default=[], key="new_acc3_grades")
+            
+            if st.button("➕ 템플릿 생성", use_container_width=True):
+                if not box_name:
+                    st.error("박스 이름을 입력하세요.")
+                else:
+                    new_template_id = f"box_{generate_id()[:8]}"
+                    conditions = {
+                        "stat_ranges": {
+                            "hp": {"min": hp_min, "max": hp_max},
+                            "atk": {"min": atk_min, "max": atk_max},
+                            "ms": {"min": ms_min, "max": ms_max}
+                        },
+                        "grades": {
+                            "main_color": main_color_grades,
+                            "sub_color": sub_color_grades,
+                            "pattern_color": pattern_color_grades,
+                            "pattern": pattern_grades,
+                            "accessory_1": acc1_grades if acc1_grades else None,
+                            "accessory_2": acc2_grades if acc2_grades else None,
+                            "accessory_3": acc3_grades if acc3_grades else None
+                        }
+                    }
+                    
+                    if create_box_template(new_template_id, box_name, box_desc, conditions, 
+                                          created_by=st.session_state.get("current_user", "admin")):
+                        st.success(f"✅ 템플릿 '{box_name}'이 생성되었습니다! (ID: {new_template_id})")
+                        st.rerun()
+                    else:
+                        st.error("❌ 템플릿 생성에 실패했습니다.")
+        
+        with subtab3:
+            st.markdown("#### 템플릿 수정")
+            
+            templates = load_box_templates(active_only=False)
+            
+            if not templates:
+                st.info("수정할 템플릿이 없습니다.")
+            else:
+                template_options = {f"{t['name']} ({t['id']})": t['id'] for t in templates}
+                selected_edit_label = st.selectbox(
+                    "수정할 템플릿",
+                    list(template_options.keys()),
+                    key="edit_box_template"
+                )
+                selected_edit_id = template_options[selected_edit_label]
+                
+                template = get_box_template(selected_edit_id)
+                
+                if template:
+                    edit_name = st.text_input("박스 이름", value=template['name'], key="edit_box_name")
+                    edit_desc = st.text_area("설명", value=template.get('description', ''), key="edit_box_desc")
+                    
+                    if st.button("💾 수정 저장", use_container_width=True):
+                        if update_box_template(selected_edit_id, name=edit_name, description=edit_desc):
+                            st.success("✅ 템플릿이 수정되었습니다.")
+                            st.rerun()
+                        else:
+                            st.error("❌ 수정에 실패했습니다.")
+
+def page_mailbox():
+    """우편함 페이지"""
+    st.title("📬 우편함")
+    
+    username = st.session_state.get("current_user")
+    if not username:
+        st.error("로그인이 필요합니다.")
+        return
+    
+    # 우편 목록 로드
+    mails = load_mailbox(username, unclaimed_only=True)
+    
+    if not mails:
+        st.info("📭 받은 우편이 없습니다.")
+        return
+    
+    st.write(f"**받은 우편: {len(mails)}개**")
+    st.divider()
+    
+    # 우편 표시
+    for mail in mails:
+        mail_id = mail["id"]
+        mail_type = mail["type"]
+        message = mail.get("message", "")
+        created_at = mail.get("created_at", "")
+        
+        with st.container():
+            st.markdown(f"### 📨 {message}")
+            st.caption(f"발송일: {created_at}")
+            
+            if mail_type == "instance":
+                # 개체 직접 지급
+                instance_data = mail.get("instance_data")
+                if instance_data:
+                    col1, col2 = st.columns([1, 2])
+                    
+                    with col1:
+                        # 개체 미리보기 (SVG)
+                        svg = render_instance_svg_cached(
+                            instance_data["id"],
+                            instance_data["appearance"]["main_color"]["id"],
+                            instance_data["appearance"]["sub_color"]["id"],
+                            instance_data["appearance"]["pattern_color"]["id"],
+                            instance_data["appearance"]["pattern"]["id"],
+                            size=150
+                        )
+                        st.markdown(svg, unsafe_allow_html=True)
+                    
+                    with col2:
+                        st.write(f"**이름**: {instance_data.get('name', 'Unknown')}")
+                        st.write(f"**전투력**: {format_korean_number(instance_data.get('power_score', 0))}")
+                        st.write(f"**HP**: {format_korean_number(instance_data['stats']['hp'])}")
+                        st.write(f"**ATK**: {format_korean_number(instance_data['stats']['atk'])}")
+                        st.write(f"**MS**: {format_korean_number(instance_data['stats']['ms'])}")
+                        
+                        # 스킬 표시
+                        skills_text = []
+                        for i in range(1, 4):
+                            acc_key = f"accessory_{i}"
+                            if instance_data.get(acc_key):
+                                skill_id = instance_data[acc_key]["id"]
+                                skill_data = SKILL_MASTER.get(skill_id, {})
+                                skills_text.append(f"[{skill_data.get('grade', '?')}] {skill_data.get('name', skill_id)}")
+                        
+                        if skills_text:
+                            st.write(f"**스킬**: {', '.join(skills_text)}")
+                    
+                    # 수령 버튼
+                    if st.button("📥 수령하기", key=f"claim_instance_{mail_id}", use_container_width=True):
+                        claimed_mail = claim_mail(mail_id)
+                        if claimed_mail:
+                            # 개체 추가
+                            st.session_state.instances.append(instance_data)
+                            save_game_data()
+                            st.success(f"✅ '{instance_data.get('name')}' 개체를 수령했습니다!")
+                            st.rerun()
+                        else:
+                            st.error("❌ 수령에 실패했습니다.")
+            
+            elif mail_type == "box":
+                # 랜덤박스 지급
+                box_template_id = mail.get("box_template_id")
+                template = get_box_template(box_template_id)
+                
+                if template:
+                    st.write(f"**박스 이름**: {template['name']}")
+                    st.write(f"**설명**: {template.get('description', '랜덤박스')}")
+                    
+                    # 조건 요약 표시
+                    conditions = template.get("conditions", {})
+                    stat_ranges = conditions.get("stat_ranges", {})
+                    
+                    if stat_ranges:
+                        st.write("**능력치 범위**:")
+                        hp_range = stat_ranges.get("hp", {})
+                        atk_range = stat_ranges.get("atk", {})
+                        ms_range = stat_ranges.get("ms", {})
+                        st.write(f"- HP: {hp_range.get('min', 0)} ~ {hp_range.get('max', 0)}")
+                        st.write(f"- ATK: {atk_range.get('min', 0)} ~ {atk_range.get('max', 0)}")
+                        st.write(f"- MS: {ms_range.get('min', 0)} ~ {ms_range.get('max', 0)}")
+                    
+                    # 개봉 버튼
+                    if st.button("🎁 개봉하기", key=f"open_box_{mail_id}", use_container_width=True):
+                        with st.spinner("박스를 개봉하는 중..."):
+                            time.sleep(1)  # 애니메이션 효과
+                            new_instance = open_random_box(box_template_id, created_by="Mailbox")
+                            
+                            if new_instance:
+                                # 우편 수령 처리
+                                claimed_mail = claim_mail(mail_id)
+                                if claimed_mail:
+                                    st.session_state.instances.append(new_instance)
+                                    save_game_data()
+                                    st.success(f"🎉 박스에서 '{new_instance['name']}'이(가) 나왔습니다!")
+                                    st.balloons()
+                                    
+                                    # 획득한 개체 미리보기
+                                    st.write("---")
+                                    st.write("### 획득한 개체")
+                                    col1, col2 = st.columns([1, 2])
+                                    
+                                    with col1:
+                                        svg = render_instance_svg_cached(
+                                            new_instance["id"],
+                                            new_instance["appearance"]["main_color"]["id"],
+                                            new_instance["appearance"]["sub_color"]["id"],
+                                            new_instance["appearance"]["pattern_color"]["id"],
+                                            new_instance["appearance"]["pattern"]["id"],
+                                            size=150
+                                        )
+                                        st.markdown(svg, unsafe_allow_html=True)
+                                    
+                                    with col2:
+                                        st.write(f"**전투력**: {format_korean_number(new_instance['power_score'])}")
+                                        st.write(f"**HP**: {format_korean_number(new_instance['stats']['hp'])}")
+                                        st.write(f"**ATK**: {format_korean_number(new_instance['stats']['atk'])}")
+                                        st.write(f"**MS**: {format_korean_number(new_instance['stats']['ms'])}")
+                                    
+                                    time.sleep(2)
+                                    st.rerun()
+                                else:
+                                    st.error("❌ 수령에 실패했습니다.")
+                            else:
+                                st.error("❌ 박스 개봉에 실패했습니다.")
+                else:
+                    st.error(f"❌ 박스 템플릿을 찾을 수 없습니다: {box_template_id}")
+            
+            st.divider()
 
 def page_dev():
     """개발자 메뉴"""
@@ -6083,6 +6671,8 @@ def main():
         page_ranking()
     elif st.session_state.page == "season_info":
         page_season_info()
+    elif st.session_state.page == "mailbox":
+        page_mailbox()
     elif st.session_state.page == "admin":
         page_admin()
     elif st.session_state.page == "dev":

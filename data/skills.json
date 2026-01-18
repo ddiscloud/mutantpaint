@@ -767,9 +767,9 @@
     "name": "Dodge",
     "resource": "sandals.svg",
     "effect": "next_turn_dodge",
-    "value": 0.7,
+    "value": 0.5,
     "cooldown": 3,
-    "desc": "다음 상대 공격을 70% 확률로 회피"
+    "desc": "다음 상대 공격을 50% 확률로 회피"
   },
   "acc3_normal04": {
     "grade": "Normal",
@@ -820,9 +820,9 @@
     "name": "Shadow Step",
     "resource": "skates.svg",
     "effect": "next_turn_dodge",
-    "value": 0.75,
-    "cooldown": 4,
-    "desc": "다음 상대 공격을 75% 확률로 회피"
+    "value": 0.6,
+    "cooldown": 3,
+    "desc": "다음 상대 공격을 60% 확률로 회피"
   },
   "acc3_normal09": {
     "grade": "Normal",
@@ -913,9 +913,9 @@
     "name": "Evasion Aura",
     "resource": "mermaid_tail.svg",
     "effect": "next_turn_dodge",
-    "value": 0.85,
+    "value": 0.75,
     "cooldown": 5,
-    "desc": "다음 상대 공격을 85% 확률로 회피"
+    "desc": "다음 상대 공격을 75% 확률로 회피"
   },
   "acc3_rare08": {
     "grade": "Rare",
