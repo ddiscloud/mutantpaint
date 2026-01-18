@@ -1,7 +1,7 @@
 import streamlit as st
 import random
 import time
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional, Tuple
 import uuid
 import json
@@ -12,6 +12,9 @@ import shutil
 import tempfile
 # msvcrt 제거 - Supabase 사용으로 파일 잠금 불필요
 from dotenv import load_dotenv
+
+# 한국 시간대 설정
+KST = timezone(timedelta(hours=9))
 
 # Supabase 임포트
 from supabase_db import (
@@ -6225,15 +6228,16 @@ def page_dev():
     elif current_season == "Preseason":
         col_s1, col_s2 = st.columns([2, 1])
         with col_s1:
-            current_date = datetime.now().date()
-            season1_start = datetime(2026, 1, 19).date()
+            # 한국 시간 기준
+            current_date = datetime.now(KST).date()
+            season1_start = datetime(2026, 1, 19, tzinfo=KST).date()
             if current_date < season1_start:
                 st.warning(f"⏰ 시즌 1은 1/19부터 시작합니다 ({(season1_start - current_date).days}일 남음)")
             else:
                 st.warning("⚠️ 시즌 1 시작 시 모든 유저 데이터가 초기화됩니다!")
                 st.caption("단, Season 0 챔피언은 특전을 유지합니다.")
         with col_s2:
-            button_disabled = datetime.now().date() < season1_start
+            button_disabled = datetime.now(KST).date() < season1_start
             if st.button("🏆 시즌 1 시작", type="primary", use_container_width=True, disabled=button_disabled):
                 new_season = end_current_season(to_preseason=False)
                 st.success(f"✅ Preseason 종료! Season 1 시작!")
