@@ -1897,8 +1897,8 @@ class Battle:
             result += f" 효과 발동!"
         
         # 버프/디버프로 인한 스탯 변경사항 즉시 반영
-        attacker.update_stats()
-        defender.update_stats()
+        attacker.apply_buffs()
+        defender.apply_buffs()
         
         return result
     
