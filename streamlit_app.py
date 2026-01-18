@@ -6280,11 +6280,18 @@ def page_dev():
     
     col1, col2 = st.columns(2)
     with col1:
+        # 안전하게 범위 내 값으로 제한
+        current_bonus = st.session_state.get("mutation_bonus", 0.0)
+        if current_bonus < 0.0:
+            current_bonus = 0.0
+        elif current_bonus > 0.5:
+            current_bonus = 0.5
+            
         mutation_bonus = st.slider(
             "돌연변이 확률 보너스",
             min_value=0.0,
             max_value=0.5,
-            value=st.session_state.get("mutation_bonus", 0.0),
+            value=current_bonus,
             step=0.05,
             help="교배 시 돌연변이 발생 확률에 추가됩니다. (예: 0.1 = +10%)"
         )
@@ -6294,10 +6301,15 @@ def page_dev():
             st.success(f"돌연변이 보너스: +{mutation_bonus*100:.0f}%")
     
     with col2:
+        # 안전하게 범위 내 값으로 제한
+        current_chain = st.session_state.get("max_chain_mutations", 3)
+        if current_chain not in [3, 4, 5]:
+            current_chain = 3
+            
         max_chain = st.selectbox(
             "최대 연쇄 돌연변이 횟수",
             options=[3, 4, 5],
-            index=[3, 4, 5].index(st.session_state.get("max_chain_mutations", 3)),
+            index=[3, 4, 5].index(current_chain),
             help="교배 시 최대 몇 번까지 연쇄 돌연변이가 발생할 수 있는지 설정합니다."
         )
         if max_chain != st.session_state.get("max_chain_mutations", 3):
