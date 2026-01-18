@@ -1592,7 +1592,7 @@ class Battle:
                 total_dmg = 0
                 for _ in range(hits):
                     dmg = int(attacker.current_atk * dmg_per)
-                    self.apply_damage(defender, dmg)
+                    self.apply_damage(attacker, defender, dmg)
                     total_dmg += dmg
                 result += f" MS 기반 {hits}회 연타! 총 {total_dmg} 데미지!"
             else:
@@ -1674,7 +1674,7 @@ class Battle:
         elif effect == "damage_buff":
             if not self.check_dodge_simple(defender):
                 dmg = int(attacker.current_atk * skill.get("dmg_value", 0.5))
-                self.apply_damage(defender, dmg)
+                self.apply_damage(attacker, defender, dmg)
                 result += f" {dmg} 데미지!"
             else:
                 dodged = self.check_and_consume_dodge(defender, defender_name)
