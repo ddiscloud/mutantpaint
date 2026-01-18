@@ -898,6 +898,9 @@ class BattleInstance:
         # 쉴드 (오버힐로 변환되는 임시 보호)
         self.shield = 0
         
+        # 반격 데미지 추적 (로그 표시용)
+        self.last_counter_damage = 0
+        
         # 쿨다운 {slot: remaining_turns}
         self.cooldowns = {1: 0, 2: 0, 3: 0}
         
@@ -1074,7 +1077,7 @@ class Battle:
         return None
     
     def apply_damage(self, attacker: BattleInstance, defender: BattleInstance, damage: int) -> int:
-        """피해 적용 (immortal 버프 체크, shield 처리, lifesteal 처리)"""
+        """피해 적용 (immortal 버프 체크, shield 처리, lifesteal 처리, counter 처리)"""
         # 쉴드 먼저 처리
         if defender.shield > 0:
             if defender.shield >= damage:
@@ -1097,6 +1100,16 @@ class Battle:
         if lifesteal_buff:
             heal = int(damage * lifesteal_buff.value)
             attacker.current_hp = min(attacker.max_hp, attacker.current_hp + heal)
+        
+        # counter(반격) 버프 처리 - 데미지를 받은 defender가 반격
+        counter_buff = next((buff for buff in defender.buffs if buff.type == "counter"), None)
+        if counter_buff and defender.current_hp > 0:
+            counter_damage = int(damage * counter_buff.value)
+            attacker.current_hp = max(0, attacker.current_hp - counter_damage)
+            # 로그에 반격 데미지 기록 (나중에 표시용)
+            defender.last_counter_damage = counter_damage
+        else:
+            defender.last_counter_damage = 0
         
         return damage
     
@@ -1928,6 +1941,10 @@ class Battle:
             result = f"{attacker_name}의 공격! {defender_name}에게 {actual_dmg} 데미지! 🛡️"
         else:
             result = f"{attacker_name}의 공격! {defender_name}에게 {actual_dmg} 데미지!"
+        
+        # 반격 데미지 표시
+        if defender.last_counter_damage > 0:
+            result += f" ⚔️ 반격 {defender.last_counter_damage}!"
         
         if reflect_dmg > 0:
             attacker.current_hp = max(0, attacker.current_hp - reflect_dmg)
