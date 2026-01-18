@@ -38,7 +38,7 @@ if "supabase_initialized" not in st.session_state:
 # ============================================================================
 
 # 마스터 데이터 로드 (캐싱을 위해 session_state 사용)
-@st.cache_data(ttl=3600)  # 1시간 캐싱
+@st.cache_data(ttl=60)  # 1분 캐싱 (개발 중 빠른 갱신)
 def load_master_data_cached():
     """Supabase에서 마스터 데이터 로드 (캐싱)"""
     return {
