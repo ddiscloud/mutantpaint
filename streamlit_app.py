@@ -1896,6 +1896,10 @@ class Battle:
             # 미구현 스킬
             result += f" 효과 발동!"
         
+        # 버프/디버프로 인한 스탯 변경사항 즉시 반영
+        attacker.update_stats()
+        defender.update_stats()
+        
         return result
     
     def basic_attack(self, attacker: BattleInstance) -> str:
