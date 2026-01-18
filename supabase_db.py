@@ -576,31 +576,31 @@ def delete_mail(mail_id: str) -> bool:
 def create_initial_starter_instances() -> list:
     """초기 개체 2마리 생성 (Starter A, B)"""
     import uuid
+    from datetime import datetime
     
     def create_starter(name: str) -> dict:
         return {
             "id": str(uuid.uuid4()),
             "name": name,
+            "is_locked": False,
+            "is_favorite": False,
+            "created_by": "Init",
+            "birth_time": datetime.now().isoformat(),
             "stats": {"hp": 10, "atk": 1, "ms": 1},
+            "power_score": 10,
             "appearance": {
                 "main_color": {"grade": "Normal", "id": "normal01"},
                 "sub_color": {"grade": "Normal", "id": "normal01"},
                 "pattern_color": {"grade": "Normal", "id": "normal01"},
                 "pattern": {"grade": "Normal", "id": "normal01"}
             },
-            "accessories": {
-                "accessory_1": None,
-                "accessory_2": None,
-                "accessory_3": None
-            },
-            "skills": {
-                "slot1": None,
-                "slot2": None,
-                "slot3": None
-            },
-            "power_score": 10,
-            "created_by": "Init",
-            "mutations": []
+            "accessory_1": None,
+            "accessory_2": None,
+            "accessory_3": None,
+            "mutation": {
+                "count": 0,
+                "fields": []
+            }
         }
     
     return [
