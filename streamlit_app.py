@@ -10,7 +10,7 @@ import math
 import hashlib
 import shutil
 import tempfile
-import msvcrt  # Windows 파일 잠금
+# msvcrt 제거 - Supabase 사용으로 파일 잠금 불필요
 from openai import OpenAI
 from dotenv import load_dotenv
 
@@ -96,48 +96,16 @@ def verify_password(password: str, hashed: str) -> bool:
     return hash_password(password) == hashed
 
 def acquire_file_lock(file_handle, timeout: float = 5.0):
-    """파일 잠금 획득 (Windows용)"""
-    start_time = time.time()
-    while True:
-        try:
-            msvcrt.locking(file_handle.fileno(), msvcrt.LK_NBLCK, 1)
-            return True
-        except IOError:
-            if time.time() - start_time > timeout:
-                return False
-            time.sleep(0.1)
+    """파일 잠금 획득 (레거시 함수 - Supabase 사용으로 불필요)"""
+    return True  # 항상 성공 반환
 
 def release_file_lock(file_handle):
-    """파일 잠금 해제 (Windows용)"""
-    try:
-        msvcrt.locking(file_handle.fileno(), msvcrt.LK_UNLCK, 1)
-    except:
-        pass
+    """파일 잠금 해제 (레거시 함수 - Supabase 사용으로 불필요)"""
+    pass  # 아무 작업 안 함
 
 def create_backup(filepath: str):
-    """파일 백업 생성"""
-    if os.path.exists(filepath):
-        backup_dir = "saves/backups"
-        if not os.path.exists(backup_dir):
-            os.makedirs(backup_dir)
-        
-        filename = os.path.basename(filepath)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_path = os.path.join(backup_dir, f"{filename}.{timestamp}.bak")
-        
-        try:
-            shutil.copy2(filepath, backup_path)
-            
-            # 백업 파일 5개만 유지
-            backup_files = sorted(
-                [f for f in os.listdir(backup_dir) if f.startswith(filename)],
-                reverse=True
-            )
-            for old_backup in backup_files[5:]:
-                try:
-                    os.remove(os.path.join(backup_dir, old_backup))
-                except:
-                    pass
+    """파일 백업 생성 (레거시 함수 - Supabase 사용으로 불필요)"""
+    pass  # 아무 작업 안 함
         except Exception as e:
             pass  # 백업 실패해도 계속 진행
 
