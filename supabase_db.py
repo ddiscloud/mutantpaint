@@ -204,6 +204,81 @@ def get_all_user_data() -> List[Dict]:
 
 
 # ============================================================================
+# 사용자 관리 함수 (관리자용)
+# ============================================================================
+
+def get_all_users() -> List[Dict]:
+    """모든 사용자 정보 조회"""
+    try:
+        client = get_supabase_client()
+        response = client.table("users").select("id, username, created_at, updated_at").order("created_at", desc=True).execute()
+        return response.data if response.data else []
+    except Exception as e:
+        print(f"사용자 목록 조회 실패: {e}")
+        return []
+
+
+def get_user_info(username: str) -> Optional[Dict]:
+    """특정 사용자의 상세 정보 조회"""
+    try:
+        client = get_supabase_client()
+        response = client.table("users").select("*").eq("username", username).execute()
+        
+        if response.data and len(response.data) > 0:
+            user = response.data[0]
+            # 비밀번호 해시는 제외
+            user.pop("password_hash", None)
+            return user
+        return None
+    except Exception as e:
+        print(f"사용자 정보 조회 실패 ({username}): {e}")
+        return None
+
+
+def delete_user(username: str) -> bool:
+    """사용자 계정 삭제"""
+    try:
+        client = get_supabase_client()
+        
+        # game_data와 season_history 먼저 삭제
+        client.table("game_data").delete().eq("username", username).execute()
+        client.table("season_history").delete().eq("username", username).execute()
+        
+        # 사용자 계정 삭제
+        response = client.table("users").delete().eq("username", username).execute()
+        print(f"사용자 '{username}' 삭제 완료")
+        return True
+    except Exception as e:
+        print(f"사용자 삭제 실패 ({username}): {e}")
+        return False
+
+
+def get_user_game_stats(username: str) -> Optional[Dict]:
+    """사용자의 게임 통계 조회"""
+    try:
+        client = get_supabase_client()
+        
+        # 게임 데이터
+        game_response = client.table("game_data").select("data").eq("username", username).execute()
+        game_data = None
+        if game_response.data and len(game_response.data) > 0:
+            game_data = game_response.data[0].get("data", {})
+        
+        # 시즌 히스토리
+        season_response = client.table("season_history").select("data").eq("username", username).execute()
+        season_data = None
+        if season_response.data and len(season_response.data) > 0:
+            season_data = season_response.data[0].get("data", {})
+        
+        return {
+            "game_data": game_data,
+            "season_history": season_data
+        }
+    except Exception as e:
+        print(f"게임 통계 조회 실패 ({username}): {e}")
+        return None
+
+# ============================================================================
 # 초기화 함수
 # ============================================================================
 

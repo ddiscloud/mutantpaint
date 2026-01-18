@@ -2848,12 +2848,15 @@ def page_home():
     
     # 개발자 권한이 있는 경우에만 개발자 메뉴 표시
     if st.session_state.get("cheat_level", "user") == "dev":
-        if st.button("🛠️ 개발자 메뉴", use_container_width=True):
-            st.session_state.page = "dev"
-            st.rerun()
-        else:
-            # 일반 사용자는 빈 공간
-            st.empty()
+        col_dev1, col_dev2 = st.columns(2)
+        with col_dev1:
+            if st.button("🛠️ 개발자 메뉴", use_container_width=True):
+                st.session_state.page = "dev"
+                st.rerun()
+        with col_dev2:
+            if st.button("👨‍💼 사용자 관리", use_container_width=True):
+                st.session_state.page = "admin"
+                st.rerun()
     
     # 즐겨찾기 개체
     favorites = [inst for inst in st.session_state.instances if inst["is_favorite"]]
@@ -4997,6 +5000,111 @@ def page_season_info():
         향후 시즌 일정은 운영 상황에 따라 결정됩니다.
         """)
 
+def page_admin():
+    """관리자 메뉴 - 사용자 관리"""
+    st.title("👨‍💼 사용자 관리")
+    
+    # 탭 분할
+    tab1, tab2 = st.tabs(["📊 사용자 목록", "🗑️ 사용자 삭제"])
+    
+    with tab1:
+        st.markdown("### 모든 사용자")
+        
+        from supabase_db import get_all_users, get_user_info
+        
+        users = get_all_users()
+        
+        if not users:
+            st.info("등록된 사용자가 없습니다.")
+        else:
+            st.info(f"총 {len(users)}명의 사용자")
+            
+            # 테이블 형식으로 표시
+            user_data = []
+            for user in users:
+                created = user.get("created_at", "N/A")
+                if isinstance(created, str):
+                    created = created.split("T")[0]  # 날짜만 추출
+                
+                user_data.append({
+                    "사용자명": user["username"],
+                    "ID": user["id"][:8] + "...",
+                    "가입일": created
+                })
+            
+            st.dataframe(user_data, use_container_width=True, hide_index=True)
+            
+            # 사용자 상세 정보 조회
+            st.markdown("---")
+            st.markdown("### 사용자 상세 정보")
+            
+            selected_username = st.selectbox(
+                "사용자 선택",
+                [u["username"] for u in users]
+            )
+            
+            if selected_username:
+                user_info = get_user_info(selected_username)
+                if user_info:
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.markdown(f"**사용자명:** {user_info['username']}")
+                        st.markdown(f"**ID:** {user_info['id']}")
+                    with col2:
+                        created = user_info.get("created_at", "N/A")
+                        if isinstance(created, str):
+                            created = created.split("T")[0]
+                        updated = user_info.get("updated_at", "N/A")
+                        if isinstance(updated, str):
+                            updated = updated.split("T")[0]
+                        st.markdown(f"**가입일:** {created}")
+                        st.markdown(f"**마지막 업데이트:** {updated}")
+    
+    with tab2:
+        st.markdown("### 사용자 삭제")
+        st.warning("⚠️ 사용자를 삭제하면 해당 계정과 모든 게임 데이터가 영구 삭제됩니다.")
+        
+        from supabase_db import get_all_users, delete_user
+        
+        users = get_all_users()
+        
+        if not users:
+            st.info("등록된 사용자가 없습니다.")
+        else:
+            delete_username = st.selectbox(
+                "삭제할 사용자 선택",
+                [u["username"] for u in users],
+                key="delete_user_select"
+            )
+            
+            # 확인 메커니즘
+            st.markdown("---")
+            st.info("🔒 삭제를 확인하려면 사용자명을 정확히 입력하세요:")
+            
+            confirm_text = st.text_input(
+                "사용자명 입력",
+                placeholder="삭제를 확인하기 위해 사용자명을 입력하세요",
+                key="delete_confirm_input"
+            )
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("🗑️ 삭제", type="primary", use_container_width=True):
+                    if confirm_text == delete_username:
+                        if delete_user(delete_username):
+                            st.success(f"✅ 사용자 '{delete_username}'이(가) 삭제되었습니다.")
+                            st.info("페이지를 새로고침하면 목록이 업데이트됩니다.")
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error(f"❌ 사용자 삭제 중 오류가 발생했습니다.")
+                    else:
+                        st.error("❌ 입력한 사용자명이 일치하지 않습니다.")
+            
+            with col2:
+                if st.button("취소", use_container_width=True):
+                    st.info("취소되었습니다.")
+
 def page_dev():
     """개발자 메뉴"""
     st.title("🛠️ 개발자 메뉴")
@@ -5357,14 +5465,23 @@ def page_login():
                 else:
                     # 신규 사용자 - 계정 생성
                     password_hash = hash_password(password)
-                    if create_user(username, password_hash):
+                    
+                    # DB에 사용자 생성 시도
+                    success = create_user(username, password_hash)
+                    
+                    if success:
+                        # 세션 상태 설정
                         st.session_state.username = username
                         st.session_state.password_hash = password_hash
                         st.success(f"'{username}' 계정이 생성되었습니다!")
                         time.sleep(0.5)
                         st.rerun()
                     else:
-                        st.error("계정 생성 중 오류가 발생했습니다. 다시 시도해주세요.")
+                        # 사용자가 이미 존재할 가능성 확인 (동시성 문제)
+                        if user_exists(username):
+                            st.error("이미 존재하는 사용자명입니다. 다른 이름을 사용하거나 올바른 비밀번호를 입력해주세요.")
+                        else:
+                            st.error("계정 생성 중 오류가 발생했습니다. 다시 시도해주세요.")
         
         st.markdown("---")
         st.markdown("""
@@ -5539,6 +5656,8 @@ def main():
         page_ranking()
     elif st.session_state.page == "season_info":
         page_season_info()
+    elif st.session_state.page == "admin":
+        page_admin()
     elif st.session_state.page == "dev":
         page_dev()
 
