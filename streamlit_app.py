@@ -5157,7 +5157,7 @@ def page_admin():
                         
                         col1, col2 = st.columns(2)
                         with col1:
-                            if st.button("🗑️ 삭제", type="primary", use_container_width=True):
+                            if st.button("🗑️ 삭제", type="primary", use_container_width=True, key="delete_instance_apply"):
                                 if confirm_delete == "DELETE":
                                     success, message = delete_user_instance(delete_inst_username, selected_inst_id)
                                     if success:
@@ -5170,7 +5170,7 @@ def page_admin():
                                     st.error("❌ 'DELETE'를 정확히 입력해주세요.")
                         
                         with col2:
-                            if st.button("취소", use_container_width=True):
+                            if st.button("취소", use_container_width=True, key="delete_instance_cancel"):
                                 st.info("취소되었습니다.")
     
     with tab4:
@@ -5237,7 +5237,7 @@ def page_admin():
                 
                 col1, col2 = st.columns(2)
                 with col1:
-                    if st.button("✅ 변경", type="primary", use_container_width=True):
+                    if st.button("✅ 변경", type="primary", use_container_width=True, key="mutation_apply"):
                         success, message = update_user_mutation_settings(
                             mutation_username, 
                             mutation_bonus, 
@@ -5251,7 +5251,7 @@ def page_admin():
                             st.error(f"❌ {message}")
                 
                 with col2:
-                    if st.button("취소", use_container_width=True):
+                    if st.button("취소", use_container_width=True, key="mutation_cancel"):
                         st.info("취소되었습니다.")
     
     with tab5:
@@ -5286,7 +5286,7 @@ def page_admin():
             
             col1, col2 = st.columns(2)
             with col1:
-                if st.button("🗑️ 삭제", type="primary", use_container_width=True):
+                if st.button("🗑️ 삭제", type="primary", use_container_width=True, key="delete_user_apply"):
                     # 공백 제거 후 비교
                     if confirm_text.strip() == delete_username.strip():
                         success, message = delete_user(delete_username)
@@ -5301,7 +5301,7 @@ def page_admin():
                         st.error(f"❌ 입력한 사용자명이 일치하지 않습니다. 입력: '{confirm_text}' vs 선택: '{delete_username}'")
             
             with col2:
-                if st.button("취소", use_container_width=True):
+                if st.button("취소", use_container_width=True, key="delete_user_cancel"):
                     st.info("취소되었습니다.")
 
 def page_dev():
