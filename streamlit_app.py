@@ -47,7 +47,7 @@ if "supabase_initialized" not in st.session_state:
 # ============================================================================
 
 # 마스터 데이터 로드 (캐싱을 위해 session_state 사용)
-@st.cache_data(ttl=60)  # 1분 캐싱 (개발 중 빠른 갱신)
+@st.cache_data(ttl=3600)  # 1시간 캐싱 (마스터 데이터는 자주 변경되지 않음)
 def load_master_data_cached():
     """Supabase에서 마스터 데이터 로드 (캐싱)"""
     return {
@@ -113,7 +113,7 @@ def create_backup(filepath: str):
 # ============================================================================
 
 # SVG 렌더링 캐시 (메모리 관리)
-@st.cache_data(ttl=7200, max_entries=500)  # 2시간, 최대 500개
+@st.cache_data(ttl=86400, max_entries=2000)  # 24시간, 최대 2000개 (메모리 효율적인 SVG)
 def render_instance_svg_cached(instance_id: str, main_color_id: str, sub_color_id: str, 
                                 pattern_color_id: str, pattern_id: str, size: int = 200) -> str:
     """개체를 SVG로 렌더링 (캐싱 최적화)"""
