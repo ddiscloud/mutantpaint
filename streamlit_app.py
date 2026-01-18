@@ -5598,7 +5598,7 @@ def page_admin():
         st.markdown("### 돌연변이 설정 변경")
         st.info("사용자의 돌연변이 확률 보너스와 최대 연쇄 횟수를 변경할 수 있습니다.")
         
-        from supabase_db import get_all_users, update_user_mutation_settings, get_user_instances
+        from supabase_db import get_all_users, update_user_mutation_settings, load_game_data as load_game_data_db
         
         users = get_all_users()
         
@@ -5613,7 +5613,15 @@ def page_admin():
             
             if mutation_username:
                 # 현재 설정값 조회
-                instances = get_user_instances(mutation_username)
+                user_data = load_game_data_db(mutation_username)
+                current_mutation_bonus = user_data.get("mutation_bonus", 0.0) if user_data else 0.0
+                current_max_chain = user_data.get("max_chain_mutations", 3) if user_data else 3
+                
+                # 값 범위 검증
+                if current_mutation_bonus < 0.0 or current_mutation_bonus > 0.5:
+                    current_mutation_bonus = 0.0
+                if current_max_chain not in [3, 4, 5]:
+                    current_max_chain = 3
                 
                 st.markdown("---")
                 st.markdown(f"**선택된 사용자:** {mutation_username}")
@@ -5627,10 +5635,10 @@ def page_admin():
                         "보너스 설정",
                         min_value=0.0,
                         max_value=0.5,
-                        value=0.0,
+                        value=current_mutation_bonus,
                         step=0.05,
                         help="교배 시 돌연변이 발생 확률에 추가됩니다. (예: 0.1 = +10%)",
-                        key="mutation_bonus_slider"
+                        key=f"mutation_bonus_slider_{mutation_username}"
                     )
                 
                 with col2:
@@ -5638,9 +5646,9 @@ def page_admin():
                     max_chain_mutations = st.selectbox(
                         "최대 연쇄 횟수",
                         options=[3, 4, 5],
-                        index=0,
+                        index=[3, 4, 5].index(current_max_chain),
                         help="교배 시 최대 몇 번까지 연쇄 돌연변이가 발생할 수 있는지 설정합니다.",
-                        key="max_chain_slider"
+                        key=f"max_chain_slider_{mutation_username}"
                     )
                 
                 # 현재 설정 표시
