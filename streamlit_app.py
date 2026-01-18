@@ -2363,12 +2363,13 @@ def end_current_season(to_preseason=False):
     # 현재 시즌 상위 3명 수집
     top3_users = get_all_users_representatives()[:3]
     
-    # 히스토리에 추가
-    season_data["history"].append({
-        "season": current_season,
-        "top3": top3_users,
-        "end_time": datetime.now().isoformat()
-    })
+    # 히스토리에 추가 (Preseason은 기록하지 않음)
+    if current_season != "Preseason":
+        season_data["history"].append({
+            "season": current_season,
+            "top3": top3_users,
+            "end_time": datetime.now().isoformat()
+        })
     
     # 시즌 0 챔피언 기록 (프리시즌 전환 시)
     if to_preseason and current_season == 0 and top3_users:
