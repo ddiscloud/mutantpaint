@@ -730,10 +730,11 @@ def open_random_box(template_id: str, created_by: str = "RandomBox") -> Optional
     
     # 능력치 랜덤 생성
     stat_ranges = conditions.get("stat_ranges", {})
-    hp = random.randint(
-        stat_ranges.get("hp", {}).get("min", 10),
-        stat_ranges.get("hp", {}).get("max", 100)
-    )
+    hp_min = stat_ranges.get("hp", {}).get("min", 10)
+    hp_max = stat_ranges.get("hp", {}).get("max", 100)
+    # HP는 10단위로 생성 (10, 20, 30, ...)
+    hp = random.randint(hp_min // 10, hp_max // 10) * 10
+    
     atk = random.randint(
         stat_ranges.get("atk", {}).get("min", 1),
         stat_ranges.get("atk", {}).get("max", 10)
