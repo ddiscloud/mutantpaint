@@ -5356,11 +5356,15 @@ def page_login():
                         st.error("비밀번호가 일치하지 않습니다!")
                 else:
                     # 신규 사용자 - 계정 생성
-                    st.session_state.username = username
-                    st.session_state.password_hash = hash_password(password)  # 해시 저장
-                    st.success(f"'{username}' 계정이 생성되었습니다!")
-                    time.sleep(0.5)
-                    st.rerun()
+                    password_hash = hash_password(password)
+                    if create_user(username, password_hash):
+                        st.session_state.username = username
+                        st.session_state.password_hash = password_hash
+                        st.success(f"'{username}' 계정이 생성되었습니다!")
+                        time.sleep(0.5)
+                        st.rerun()
+                    else:
+                        st.error("계정 생성 중 오류가 발생했습니다. 다시 시도해주세요.")
         
         st.markdown("---")
         st.markdown("""
