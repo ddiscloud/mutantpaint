@@ -2444,19 +2444,25 @@ def end_current_season(to_preseason=False):
                     mutation_bonus = 0.1 if username == first_place_username else 0.0
                     max_chain = 4 if username == first_place_username else 3
                     
+                    # 초기 개체 2마리 생성
+                    starter_a = create_initial_instance()
+                    starter_a["name"] = "Starter A"
+                    starter_b = create_initial_instance()
+                    starter_b["name"] = "Starter B"
+                    
                     # 비밀번호(해시) 유지하고 나머지는 초기화
                     new_data = {
                         "password_hash": old_data.get("password_hash", old_data.get("password", "")),  # 구 버전 호환
                         "cheat_level": "user",
-                        "instances": [],
+                        "instances": [starter_a, starter_b],
                         "last_breed_time": None,
                         "representative_id": None,
                         "offspring_counter": 0,
                         "last_random_box_time": None,
                         "max_instances": 200,
                         "collection": {
-                            "colors": {"main": [], "sub": [], "pattern": []},
-                            "patterns": [],
+                            "colors": {"main": ["normal01"], "sub": ["normal01"], "pattern": ["normal01"]},
+                            "patterns": ["normal01"],
                             "accessories": [],
                             "skills": {"slot1": [], "slot2": [], "slot3": []}
                         },

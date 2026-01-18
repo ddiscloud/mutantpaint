@@ -573,6 +573,41 @@ def delete_mail(mail_id: str) -> bool:
 # 시즌 초기화 함수
 # ============================================================================
 
+def create_initial_starter_instances() -> list:
+    """초기 개체 2마리 생성 (Starter A, B)"""
+    import uuid
+    
+    def create_starter(name: str) -> dict:
+        return {
+            "id": str(uuid.uuid4()),
+            "name": name,
+            "stats": {"hp": 10, "atk": 1, "ms": 1},
+            "appearance": {
+                "main_color": {"grade": "Normal", "id": "normal01"},
+                "sub_color": {"grade": "Normal", "id": "normal01"},
+                "pattern_color": {"grade": "Normal", "id": "normal01"},
+                "pattern": {"grade": "Normal", "id": "normal01"}
+            },
+            "accessories": {
+                "accessory_1": None,
+                "accessory_2": None,
+                "accessory_3": None
+            },
+            "skills": {
+                "slot1": None,
+                "slot2": None,
+                "slot3": None
+            },
+            "power_score": 10,
+            "created_by": "Init",
+            "mutations": []
+        }
+    
+    return [
+        create_starter("Starter A"),
+        create_starter("Starter B")
+    ]
+
 def reset_all_user_game_data(keep_password: bool = True, champion_username: str = None) -> tuple:
     """모든 유저의 게임 데이터 초기화
     
@@ -604,18 +639,21 @@ def reset_all_user_game_data(keep_password: bool = True, champion_username: str 
                 mutation_bonus = 0.1 if username == champion_username else 0.0
                 max_chain = 4 if username == champion_username else 3
                 
+                # 초기 개체 2마리 생성
+                starter_instances = create_initial_starter_instances()
+                
                 # 초기화된 데이터
                 initial_data = {
                     "cheat_level": "user",
-                    "instances": [],
+                    "instances": starter_instances,
                     "last_breed_time": None,
                     "representative_id": None,
                     "offspring_counter": 0,
                     "last_random_box_time": None,
                     "max_instances": 200,
                     "collection": {
-                        "colors": {"main": [], "sub": [], "pattern": []},
-                        "patterns": [],
+                        "colors": {"main": ["normal01"], "sub": ["normal01"], "pattern": ["normal01"]},
+                        "patterns": ["normal01"],
                         "accessories": [],
                         "skills": {"slot1": [], "slot2": [], "slot3": []}
                     },
