@@ -4162,15 +4162,19 @@ def page_ranking():
     st.markdown("### 🏅 TOP 3")
     top3 = representatives[:3]
     
-    if len(top3) >= 3:
-        cols = st.columns(3)
+    if len(top3) > 0:
+        # 실제 있는 만큼만 컬럼 생성
+        cols = st.columns(len(top3))
+        medals = ["🥇", "🥈", "🥉"]
+        border_colors = ['#ffd700', '#c0c0c0', '#cd7f32']
+        
         for idx, (col, rep) in enumerate(zip(cols, top3)):
             with col:
-                medal = ["🥇", "🥈", "🥉"][idx]
+                medal = medals[idx]
                 is_me = rep["username"] == my_username
                 
                 st.markdown(f"""
-                <div style="padding: 15px; border-radius: 10px; border: 2px solid {'#ffd700' if idx==0 else '#c0c0c0' if idx==1 else '#cd7f32'}; text-align: center; background: {'rgba(255, 215, 0, 0.1)' if idx==0 else 'transparent'};">
+                <div style="padding: 15px; border-radius: 10px; border: 2px solid {border_colors[idx]}; text-align: center; background: {'rgba(255, 215, 0, 0.1)' if idx==0 else 'transparent'};">
                     <div style="font-size: 2em;">{medal}</div>
                     <div style="font-weight: bold; margin: 5px 0;">{rep['username']}</div>
                     <div style="font-size: 0.9em; opacity: 0.8;">💪 {format_korean_number(rep['power_score'])}</div>
@@ -4195,53 +4199,57 @@ def page_ranking():
                             st.caption(skill['desc'])
                         else:
                             st.markdown(f"• 슬롯 {i}: 없음")
+    else:
+        st.info("아직 TOP 3가 없습니다. 대표 유닛을 설정해주세요!")
     
     st.markdown("---")
     
     # 전체 랭킹 (간결하게, 20위까지만)
     st.markdown("### 📊 전체 랭킹 (TOP 20)")
     
-    for idx, rep in enumerate(representatives[:20]):  # 20위까지만 표시
-        rank = idx + 1
-        is_me = rep["username"] == my_username
-        
-        # 상위 3명은 이미 표시했으므로 간단하게
-        if rank <= 3:
-            continue
-        
-        col1, col2, col3, col4 = st.columns([0.5, 1, 2, 1.5])
-        
-        with col1:
-            st.markdown(f"**{rank}**")
-        
-        with col2:
-            svg = get_instance_svg(rep["instance"], size=50)
-            st.markdown(svg, unsafe_allow_html=True)
-        
-        with col3:
-            name_style = "color: #ff6b6b; font-weight: bold;" if is_me else ""
-            st.markdown(f"<div style='{name_style}'>{rep['username']}</div>", unsafe_allow_html=True)
-            st.caption(f"{rep['instance']['name']}")
-        
-        with col4:
-            st.markdown(f"💪 **{format_korean_number(rep['power_score'])}**")
-            with st.expander("상세"):
-                st.markdown(f"HP: {rep['instance']['stats']['hp']:,}")
-                st.markdown(f"ATK: {rep['instance']['stats']['atk']:,}")
-                st.markdown(f"MS: {rep['instance']['stats']['ms']:,}")
-                
-                st.markdown("**⚔️ 스킬:**")
-                for i in range(1, 4):
-                    acc_key = f"accessory_{i}"
-                    if rep['instance'].get(acc_key) and rep['instance'][acc_key]["id"] in SKILL_MASTER:
-                        skill = SKILL_MASTER[rep['instance'][acc_key]["id"]]
-                        st.markdown(f"• **{skill['name']}** ({skill['grade']})")
-                        st.caption(skill['desc'])
-                    else:
-                        st.markdown(f"• 슬롯 {i}: 없음")
-        
-        if idx < min(19, len(representatives) - 1):  # 20위까지만 구분선
-            st.markdown("<hr style='margin: 5px 0; opacity: 0.3;'>", unsafe_allow_html=True)
+    # TOP 3 제외한 나머지 표시
+    remaining = [rep for idx, rep in enumerate(representatives[:20]) if idx >= 3]
+    
+    if remaining:
+        for idx, rep in enumerate(remaining):
+            rank = idx + 4  # 4위부터 시작
+            is_me = rep["username"] == my_username
+            
+            col1, col2, col3, col4 = st.columns([0.5, 1, 2, 1.5])
+            
+            with col1:
+                st.markdown(f"**{rank}**")
+            
+            with col2:
+                svg = get_instance_svg(rep["instance"], size=50)
+                st.markdown(svg, unsafe_allow_html=True)
+            
+            with col3:
+                name_style = "color: #ff6b6b; font-weight: bold;" if is_me else ""
+                st.markdown(f"<div style='{name_style}'>{rep['username']}</div>", unsafe_allow_html=True)
+                st.caption(f"{rep['instance']['name']}")
+            
+            with col4:
+                st.markdown(f"💪 **{format_korean_number(rep['power_score'])}**")
+                with st.expander("상세"):
+                    st.markdown(f"HP: {rep['instance']['stats']['hp']:,}")
+                    st.markdown(f"ATK: {rep['instance']['stats']['atk']:,}")
+                    st.markdown(f"MS: {rep['instance']['stats']['ms']:,}")
+                    
+                    st.markdown("**⚔️ 스킬:**")
+                    for i in range(1, 4):
+                        acc_key = f"accessory_{i}"
+                        if rep['instance'].get(acc_key) and rep['instance'][acc_key]["id"] in SKILL_MASTER:
+                            skill = SKILL_MASTER[rep['instance'][acc_key]["id"]]
+                            st.markdown(f"• **{skill['name']}** ({skill['grade']})")
+                            st.caption(skill['desc'])
+                        else:
+                            st.markdown(f"• 슬롯 {i}: 없음")
+            
+            if idx < len(remaining) - 1:  # 마지막이 아니면 구분선
+                st.markdown("<hr style='margin: 5px 0; opacity: 0.3;'>", unsafe_allow_html=True)
+    elif len(representatives) <= 3:
+        st.info("4위 이하 랭킹이 없습니다.")
 
 def generate_stage_enemy(stage: int) -> Dict:
     """스테이지별 적 생성 (스킬 고정)"""
