@@ -1987,6 +1987,9 @@ class Battle:
         name = "아군" if actor.is_player else "적군"
         self.add_log(f"=== {name}의 턴 ===")
         
+        # 턴 시작 시 버프/디버프 지속시간 감소 (이전 턴에 받은 효과 소진)
+        actor.tick_buffs()
+        
         # 턴 시작 효과 (지속 회복 등) - 행동자만
         for buff in actor.buffs:
             if buff.type == "regen":
@@ -1997,7 +2000,6 @@ class Battle:
         # 스턴 체크
         if actor.stunned > 0:
             self.add_log(f"{name}은(는) 행동 불가!")
-            actor.tick_buffs()
             return
         
         # 스킬 선택 및 사용
@@ -2009,9 +2011,6 @@ class Battle:
         # 기본 공격
         result = self.basic_attack(actor)
         self.add_log(result)
-        
-        # 행동 후 양쪽 모두 버프/쿨다운 감소 (행동자의 턴이 끝났으므로)
-        actor.tick_buffs()
         
         return True  # 행동 발생함
     
