@@ -3047,11 +3047,10 @@ def page_home():
         st.rerun()
     
     # 우편함 버튼 (알림 표시)
-    username = st.session_state.get("current_user")
+    username = st.session_state.username
     unclaimed_count = 0
-    if username:
-        mails = load_mailbox(username, unclaimed_only=True)
-        unclaimed_count = len(mails)
+    mails = load_mailbox(username, unclaimed_only=True)
+    unclaimed_count = len(mails)
     
     mailbox_label = f"📬 우편함 ({unclaimed_count})" if unclaimed_count > 0 else "📬 우편함"
     if st.button(mailbox_label, use_container_width=True, type="primary" if unclaimed_count > 0 else "secondary"):
@@ -5936,7 +5935,7 @@ def page_admin():
                     }
                     
                     if create_box_template(new_template_id, box_name, box_desc, conditions, 
-                                          created_by=st.session_state.get("current_user", "admin")):
+                                          created_by=st.session_state.username):
                         st.success(f"✅ 템플릿 '{box_name}'이 생성되었습니다! (ID: {new_template_id})")
                         st.rerun()
                     else:
@@ -5975,10 +5974,7 @@ def page_mailbox():
     """우편함 페이지"""
     st.title("📬 우편함")
     
-    username = st.session_state.get("current_user")
-    if not username:
-        st.error("로그인이 필요합니다.")
-        return
+    username = st.session_state.username
     
     # 우편 목록 로드
     mails = load_mailbox(username, unclaimed_only=True)
