@@ -5086,22 +5086,77 @@ def page_admin():
                     
                     # 개체 목록 표시
                     for idx, inst in enumerate(instances, 1):
-                        with st.expander(f"#{idx} {inst.get('name', 'Unknown')} (ID: {inst.get('id', 'N/A')})"):
+                        # 전투력 계산
+                        stats = inst.get('stats', {})
+                        if stats:
+                            power_score = calculate_power_score(stats)
+                        else:
+                            power_score = 0
+                        
+                        with st.expander(f"#{idx} {inst.get('name', 'Unknown')} - 전투력: {power_score}"):
                             col1, col2 = st.columns(2)
                             with col1:
                                 st.markdown(f"**이름:** {inst.get('name', 'N/A')}")
                                 st.markdown(f"**ID:** {inst.get('id', 'N/A')}")
-                                st.markdown(f"**체급:** {inst.get('grade', 'N/A')}")
+                                st.markdown(f"**레벨:** {inst.get('level', 'N/A')}")
                             with col2:
-                                st.markdown(f"**HP:** {inst.get('hp', 'N/A')}")
-                                st.markdown(f"**ATK:** {inst.get('atk', 'N/A')}")
-                                st.markdown(f"**MS:** {inst.get('ms', 'N/A')}")
+                                st.markdown(f"**HP:** {stats.get('hp', 'N/A')}")
+                                st.markdown(f"**ATK:** {stats.get('atk', 'N/A')}")
+                                st.markdown(f"**MS:** {stats.get('ms', 'N/A')}")
                             
-                            # 색상 정보
-                            if "main_color_id" in inst:
-                                st.markdown(f"**Main Color ID:** {inst['main_color_id']}")
-                            if "sub_color_id" in inst:
-                                st.markdown(f"**Sub Color ID:** {inst['sub_color_id']}")
+                            st.markdown("---")
+                            
+                            # 외형 정보
+                            appearance = inst.get('appearance', {})
+                            if appearance:
+                                st.markdown("**🎨 외형**")
+                                
+                                # 색상 정보
+                                try:
+                                    main_color_id = appearance.get('main_color', {}).get('id')
+                                    if main_color_id and main_color_id in COLOR_MASTER:
+                                        main_color = COLOR_MASTER[main_color_id]
+                                        st.markdown(f"• **Main Color:** {main_color['name']} ({main_color['grade']})")
+                                    
+                                    sub_color_id = appearance.get('sub_color', {}).get('id')
+                                    if sub_color_id and sub_color_id in COLOR_MASTER:
+                                        sub_color = COLOR_MASTER[sub_color_id]
+                                        st.markdown(f"• **Sub Color:** {sub_color['name']} ({sub_color['grade']})")
+                                    
+                                    pattern_color_id = appearance.get('pattern_color', {}).get('id')
+                                    if pattern_color_id and pattern_color_id in COLOR_MASTER:
+                                        pattern_color = COLOR_MASTER[pattern_color_id]
+                                        st.markdown(f"• **Pattern Color:** {pattern_color['name']} ({pattern_color['grade']})")
+                                    
+                                    pattern_id = appearance.get('pattern', {}).get('id')
+                                    if pattern_id and pattern_id in PATTERN_MASTER:
+                                        pattern = PATTERN_MASTER[pattern_id]
+                                        st.markdown(f"• **Pattern:** {pattern['layout']} ({appearance.get('pattern', {}).get('grade')})")
+                                except:
+                                    st.caption("외형 정보 표시 중 오류 발생")
+                            
+                            st.markdown("---")
+                            
+                            # 스킬 정보
+                            st.markdown("**⚔️ 스킬**")
+                            has_skill = False
+                            for i in range(1, 4):
+                                acc_key = f"accessory_{i}"
+                                if inst.get(acc_key):
+                                    acc = inst[acc_key]
+                                    acc_id = acc.get('id')
+                                    if acc_id and acc_id in SKILL_MASTER:
+                                        skill = SKILL_MASTER[acc_id]
+                                        st.markdown(f"• **슬롯 {i}:** {skill['name']} ({skill['grade']})")
+                                        st.caption(f"{skill.get('desc', 'N/A')}")
+                                        has_skill = True
+                                    else:
+                                        st.caption(f"슬롯 {i}: ID {acc_id} (마스터 데이터 없음)")
+                                else:
+                                    st.caption(f"슬롯 {i}: 미장착")
+                            
+                            if not has_skill:
+                                st.caption("장착된 스킬 없음")
     
     with tab3:
         st.markdown("### 개체 삭제")
@@ -5133,7 +5188,9 @@ def page_admin():
                     for inst in instances:
                         inst_name = inst.get('name', 'Unknown')
                         inst_id = inst.get('id', 'N/A')
-                        label = f"{inst_name} (Lv.{inst.get('level', 1)}) - HP:{inst.get('hp')} ATK:{inst.get('atk')} MS:{inst.get('ms')}"
+                        stats = inst.get('stats', {})
+                        power_score = calculate_power_score(stats) if stats else 0
+                        label = f"{inst_name} (Lv.{inst.get('level', 1)}) - 전투력: {power_score} - HP:{stats.get('hp')} ATK:{stats.get('atk')} MS:{stats.get('ms')}"
                         instance_options[label] = inst_id
                     
                     selected_inst_label = st.selectbox(
@@ -5145,8 +5202,69 @@ def page_admin():
                     if selected_inst_label:
                         selected_inst_id = instance_options[selected_inst_label]
                         
+                        # 선택된 개체의 상세 정보 표시
+                        selected_inst = next((inst for inst in instances if inst.get('id') == selected_inst_id), None)
+                        
                         st.markdown("---")
                         st.info(f"**선택된 개체:** {selected_inst_label}")
+                        
+                        if selected_inst:
+                            # 기본 정보
+                            stats = selected_inst.get('stats', {})
+                            st.markdown("**📊 기본 정보**")
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.markdown(f"• **이름:** {selected_inst.get('name')}")
+                                st.markdown(f"• **레벨:** {selected_inst.get('level')}")
+                                st.markdown(f"• **전투력:** {calculate_power_score(stats) if stats else 0}")
+                            with col2:
+                                st.markdown(f"• **HP:** {stats.get('hp')}")
+                                st.markdown(f"• **ATK:** {stats.get('atk')}")
+                                st.markdown(f"• **MS:** {stats.get('ms')}")
+                            
+                            # 외형 정보
+                            appearance = selected_inst.get('appearance', {})
+                            if appearance:
+                                st.markdown("**🎨 외형**")
+                                try:
+                                    main_color_id = appearance.get('main_color', {}).get('id')
+                                    if main_color_id and main_color_id in COLOR_MASTER:
+                                        main_color = COLOR_MASTER[main_color_id]
+                                        st.markdown(f"• **Main Color:** {main_color['name']} ({main_color['grade']})")
+                                    
+                                    sub_color_id = appearance.get('sub_color', {}).get('id')
+                                    if sub_color_id and sub_color_id in COLOR_MASTER:
+                                        sub_color = COLOR_MASTER[sub_color_id]
+                                        st.markdown(f"• **Sub Color:** {sub_color['name']} ({sub_color['grade']})")
+                                    
+                                    pattern_color_id = appearance.get('pattern_color', {}).get('id')
+                                    if pattern_color_id and pattern_color_id in COLOR_MASTER:
+                                        pattern_color = COLOR_MASTER[pattern_color_id]
+                                        st.markdown(f"• **Pattern Color:** {pattern_color['name']} ({pattern_color['grade']})")
+                                    
+                                    pattern_id = appearance.get('pattern', {}).get('id')
+                                    if pattern_id and pattern_id in PATTERN_MASTER:
+                                        pattern = PATTERN_MASTER[pattern_id]
+                                        st.markdown(f"• **Pattern:** {pattern['layout']} ({appearance.get('pattern', {}).get('grade')})")
+                                except:
+                                    st.caption("외형 정보 표시 중 오류")
+                            
+                            # 스킬 정보
+                            st.markdown("**⚔️ 스킬**")
+                            for i in range(1, 4):
+                                acc_key = f"accessory_{i}"
+                                if selected_inst.get(acc_key):
+                                    acc = selected_inst[acc_key]
+                                    acc_id = acc.get('id')
+                                    if acc_id and acc_id in SKILL_MASTER:
+                                        skill = SKILL_MASTER[acc_id]
+                                        st.markdown(f"• **슬롯 {i}:** {skill['name']} ({skill['grade']}) - {skill.get('desc', '')}")
+                                    else:
+                                        st.markdown(f"• **슬롯 {i}:** ID {acc_id} (마스터 데이터 없음)")
+                                else:
+                                    st.markdown(f"• **슬롯 {i}:** 미장착")
+                        
+                        st.markdown("---")
                         st.warning(f"🔒 삭제를 확인하려면 'DELETE'를 입력하세요:")
                         
                         confirm_delete = st.text_input(
