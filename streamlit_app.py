@@ -24,7 +24,9 @@ from supabase_db import (
     # 랜덤박스 & 우편함
     load_box_templates, get_box_template, create_box_template, 
     update_box_template, delete_box_template,
-    load_mailbox, send_mail, claim_mail, delete_mail
+    load_mailbox, send_mail, claim_mail, delete_mail,
+    # 시즌 초기화
+    reset_all_user_game_data, clear_all_mailbox
 )
 
 # 환경 변수 로드
@@ -2396,6 +2398,30 @@ def end_current_season(to_preseason=False):
         first_place_username = season_data["season0_champion"]
     elif top3_users:
         first_place_username = top3_users[0]["username"]
+    
+    # ========================================
+    # Supabase 데이터 초기화
+    # ========================================
+    
+    # 1. 모든 유저 게임 데이터 초기화 (비밀번호는 유지)
+    success_count, fail_count, failed_users = reset_all_user_game_data(
+        keep_password=True,
+        champion_username=first_place_username
+    )
+    print(f"✅ Supabase 유저 데이터 초기화: {success_count}명 성공, {fail_count}명 실패")
+    if failed_users:
+        print(f"⚠️ 실패한 유저: {', '.join(failed_users)}")
+    
+    # 2. 우편함 전체 삭제
+    mail_success, mail_count = clear_all_mailbox()
+    if mail_success:
+        print(f"✅ 우편함 데이터 {mail_count}개 삭제 완료")
+    else:
+        print(f"⚠️ 우편함 삭제 실패")
+    
+    # ========================================
+    # 로컬 파일 초기화 (레거시 지원)
+    # ========================================
     
     # 모든 유저 데이터 초기화 (비밀번호만 유지)
     if os.path.exists("saves"):
@@ -5690,7 +5716,7 @@ def page_admin():
     
     with tab6:
         st.markdown("### 📬 우편 지급")
-        st.write("특정 사용자에게 개체 또는 랜덤박스를 우편으로 발송합니다.")
+        st.write("특정 사용자 또는 여러 사용자에게 개체 또는 랜덤박스를 우편으로 발송합니다.")
         
         from supabase_db import get_all_users
         
@@ -5699,12 +5725,34 @@ def page_admin():
         if not users:
             st.info("등록된 사용자가 없습니다.")
         else:
-            # 수신자 선택
-            recipient = st.selectbox(
-                "수신 사용자",
-                [u["username"] for u in users],
-                key="mail_recipient"
+            # 발송 모드 선택
+            send_mode = st.radio(
+                "발송 모드",
+                ["단일 사용자", "여러 사용자", "전체 사용자"],
+                key="mail_send_mode",
+                horizontal=True
             )
+            
+            # 수신자 선택
+            recipients = []
+            if send_mode == "단일 사용자":
+                recipient = st.selectbox(
+                    "수신 사용자",
+                    [u["username"] for u in users],
+                    key="mail_recipient"
+                )
+                recipients = [recipient]
+            elif send_mode == "여러 사용자":
+                recipients = st.multiselect(
+                    "수신 사용자 (복수 선택)",
+                    [u["username"] for u in users],
+                    key="mail_recipients_multi"
+                )
+                if not recipients:
+                    st.warning("⚠️ 최소 1명 이상 선택하세요.")
+            else:  # 전체 사용자
+                recipients = [u["username"] for u in users]
+                st.info(f"📢 전체 {len(recipients)}명의 사용자에게 발송됩니다.")
             
             # 우편 유형 선택
             mail_type = st.radio(
@@ -5784,25 +5832,36 @@ def page_admin():
                 instance_name = st.text_input("개체 이름", value="운영자 지급", key="mail_instance_name")
                 
                 if st.button("📤 개체 발송", use_container_width=True):
-                    # 개체 생성
-                    instance = create_instance(
-                        hp=hp, atk=atk, ms=ms,
-                        main_color={"grade": main_grade, "id": main_color_id},
-                        sub_color={"grade": sub_grade, "id": sub_color_id},
-                        pattern_color={"grade": pattern_color_grade, "id": pattern_color_id},
-                        pattern={"grade": pattern_grade, "id": pattern_id},
-                        accessory_1={"grade": acc1_grade, "id": acc1_id} if acc1_enabled else None,
-                        accessory_2={"grade": acc2_grade, "id": acc2_id} if acc2_enabled else None,
-                        accessory_3={"grade": acc3_grade, "id": acc3_id} if acc3_enabled else None,
-                        name=instance_name,
-                        created_by="Admin"
-                    )
-                    
-                    # 우편 발송
-                    if send_mail(recipient, "instance", message, instance_data=instance):
-                        st.success(f"✅ '{recipient}'에게 개체를 발송했습니다!")
+                    if not recipients:
+                        st.error("❌ 수신자를 선택하세요.")
                     else:
-                        st.error("❌ 우편 발송에 실패했습니다.")
+                        # 개체 생성
+                        instance = create_instance(
+                            hp=hp, atk=atk, ms=ms,
+                            main_color={"grade": main_grade, "id": main_color_id},
+                            sub_color={"grade": sub_grade, "id": sub_color_id},
+                            pattern_color={"grade": pattern_color_grade, "id": pattern_color_id},
+                            pattern={"grade": pattern_grade, "id": pattern_id},
+                            accessory_1={"grade": acc1_grade, "id": acc1_id} if acc1_enabled else None,
+                            accessory_2={"grade": acc2_grade, "id": acc2_id} if acc2_enabled else None,
+                            accessory_3={"grade": acc3_grade, "id": acc3_id} if acc3_enabled else None,
+                            name=instance_name,
+                            created_by="Admin"
+                        )
+                        
+                        # 여러 명에게 우편 발송
+                        success_count = 0
+                        fail_count = 0
+                        for recipient in recipients:
+                            if send_mail(recipient, "instance", message, instance_data=instance):
+                                success_count += 1
+                            else:
+                                fail_count += 1
+                        
+                        if fail_count == 0:
+                            st.success(f"✅ {success_count}명에게 개체를 발송했습니다!")
+                        else:
+                            st.warning(f"⚠️ {success_count}명 성공, {fail_count}명 실패")
             
             else:  # 랜덤박스 지급
                 st.markdown("#### 랜덤박스 선택")
@@ -5836,10 +5895,22 @@ def page_admin():
                             st.write(f"- MS: {stat_ranges.get('ms', {}).get('min', 0)} ~ {stat_ranges.get('ms', {}).get('max', 0)}")
                     
                     if st.button("📤 랜덤박스 발송", use_container_width=True):
-                        if send_mail(recipient, "box", message, box_template_id=selected_template_id):
-                            st.success(f"✅ '{recipient}'에게 랜덤박스를 발송했습니다!")
+                        if not recipients:
+                            st.error("❌ 수신자를 선택하세요.")
                         else:
-                            st.error("❌ 우편 발송에 실패했습니다.")
+                            # 여러 명에게 우편 발송
+                            success_count = 0
+                            fail_count = 0
+                            for recipient in recipients:
+                                if send_mail(recipient, "box", message, box_template_id=selected_template_id):
+                                    success_count += 1
+                                else:
+                                    fail_count += 1
+                            
+                            if fail_count == 0:
+                                st.success(f"✅ {success_count}명에게 랜덤박스를 발송했습니다!")
+                            else:
+                                st.warning(f"⚠️ {success_count}명 성공, {fail_count}명 실패")
     
     with tab7:
         st.markdown("### 🎁 랜덤박스 관리")

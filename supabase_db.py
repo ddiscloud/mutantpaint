@@ -569,6 +569,128 @@ def delete_mail(mail_id: str) -> bool:
 # 초기화 함수
 # ============================================================================
 
+# ============================================================================
+# 시즌 초기화 함수
+# ============================================================================
+
+def reset_all_user_game_data(keep_password: bool = True, champion_username: str = None) -> tuple:
+    """모든 유저의 게임 데이터 초기화
+    
+    Args:
+        keep_password: True면 비밀번호는 유지하고 게임 데이터만 초기화
+        champion_username: 챔피언 유저명 (특전 부여)
+    
+    Returns:
+        (success_count, fail_count, failed_users)
+    """
+    try:
+        client = get_supabase_client()
+        
+        # 모든 유저 조회
+        users_response = client.table("users").select("username").execute()
+        
+        if not users_response.data:
+            return 0, 0, []
+        
+        success_count = 0
+        fail_count = 0
+        failed_users = []
+        
+        for user in users_response.data:
+            username = user["username"]
+            
+            try:
+                # 챔피언 특전
+                mutation_bonus = 0.1 if username == champion_username else 0.0
+                max_chain = 4 if username == champion_username else 3
+                
+                # 초기화된 데이터
+                initial_data = {
+                    "cheat_level": "user",
+                    "instances": [],
+                    "last_breed_time": None,
+                    "representative_id": None,
+                    "offspring_counter": 0,
+                    "last_random_box_time": None,
+                    "max_instances": 200,
+                    "collection": {
+                        "colors": {"main": [], "sub": [], "pattern": []},
+                        "patterns": [],
+                        "accessories": [],
+                        "skills": {"slot1": [], "slot2": [], "slot3": []}
+                    },
+                    "max_power": 0,
+                    "mutation_bonus": mutation_bonus,
+                    "max_chain_mutations": max_chain,
+                    "current_stage": 1
+                }
+                
+                # 기존 password_hash 유지
+                if keep_password:
+                    game_response = client.table("game_data").select("data").eq("username", username).execute()
+                    if game_response.data and len(game_response.data) > 0:
+                        old_data = game_response.data[0]["data"]
+                        if "password_hash" in old_data:
+                            initial_data["password_hash"] = old_data["password_hash"]
+                
+                # 게임 데이터 업데이트
+                existing = client.table("game_data").select("id").eq("username", username).execute()
+                
+                if existing.data and len(existing.data) > 0:
+                    # UPDATE
+                    record_id = existing.data[0]["id"]
+                    client.table("game_data").update({
+                        "data": initial_data,
+                        "updated_at": datetime.now().isoformat()
+                    }).eq("id", record_id).execute()
+                else:
+                    # INSERT
+                    client.table("game_data").insert({
+                        "username": username,
+                        "data": initial_data
+                    }).execute()
+                
+                success_count += 1
+                print(f"✅ '{username}' 데이터 초기화 완료")
+                
+            except Exception as e:
+                fail_count += 1
+                failed_users.append(username)
+                print(f"❌ '{username}' 초기화 실패: {e}")
+        
+        return success_count, fail_count, failed_users
+        
+    except Exception as e:
+        print(f"❌ 전체 데이터 초기화 실패: {e}")
+        return 0, 0, []
+
+
+def clear_all_mailbox() -> tuple:
+    """모든 우편함 데이터 삭제
+    
+    Returns:
+        (success: bool, deleted_count: int)
+    """
+    try:
+        client = get_supabase_client()
+        
+        # 삭제 전 개수 확인
+        count_response = client.table("mailbox").select("id", count="exact").execute()
+        mail_count = count_response.count if hasattr(count_response, 'count') else len(count_response.data)
+        
+        # 전체 삭제
+        client.table("mailbox").delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
+        
+        print(f"✅ 우편함 데이터 {mail_count}개 삭제 완료")
+        return True, mail_count
+        
+    except Exception as e:
+        print(f"❌ 우편함 삭제 실패: {e}")
+        return False, 0
+
+
+# ============================================================================
+
 def init_supabase_db():
     """Supabase 데이터베이스 초기화 (연결 테스트)"""
     try:
