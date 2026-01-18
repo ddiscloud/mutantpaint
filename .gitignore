@@ -1,0 +1,66 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment variables (민감 정보!)
+.env
+.env.local
+.env.*.local
+
+# Streamlit
+.streamlit/secrets.toml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 로컬 저장 데이터 (Supabase로 이전됨)
+saves/
+!saves/.gitkeep
+
+# 로컬 개발/터널링 도구 (배포 불필요)
+cloudflared.exe
+keep-alive.ps1
+start-tunnel.ps1
+README_TUNNEL.md
+
+# 마이그레이션 스크립트 (1회성, 배포 불필요)
+migrate_to_supabase.py
+
+# 유틸리티 스크립트 (선택적)
+check_user_data.py
+
+# 임시 파일
+*.tmp
+*.bak
+*.log

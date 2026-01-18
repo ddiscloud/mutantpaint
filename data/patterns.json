@@ -1,0 +1,20 @@
+{
+  "normal01": {"grade": "Normal", "layout": "full_main"},
+  "normal02": {"grade": "Normal", "layout": "split_v"},
+  "normal03": {"grade": "Normal", "layout": "split_h"},
+  "normal04": {"grade": "Normal", "layout": "quad"},
+  "normal05": {"grade": "Normal", "layout": "frame"},
+  "rare01": {"grade": "Rare", "layout": "diagonal"},
+  "rare02": {"grade": "Rare", "layout": "core_center"},
+  "rare03": {"grade": "Rare", "layout": "stripe_v"},
+  "rare04": {"grade": "Rare", "layout": "stripe_h"},
+  "epic01": {"grade": "Epic", "layout": "cross"},
+  "epic02": {"grade": "Epic", "layout": "diamond"},
+  "epic03": {"grade": "Epic", "layout": "border_thick"},
+  "unique01": {"grade": "Unique", "layout": "fractured_core"},
+  "unique02": {"grade": "Unique", "layout": "spiral"},
+  "unique03": {"grade": "Unique", "layout": "checkerboard"},
+  "legendary01": {"grade": "Legendary", "layout": "mandala"},
+  "legendary02": {"grade": "Legendary", "layout": "explosion"},
+  "mystic01": {"grade": "Mystic", "layout": "cosmic"}
+}
