@@ -16,16 +16,35 @@ if sys.stdout.encoding != 'utf-8':
 load_dotenv()
 
 # Streamlit Cloud Secrets 또는 환경 변수에서 로드
+SUPABASE_URL = None
+SUPABASE_KEY = None
+SUPABASE_SERVICE_ROLE_KEY = None
+
 try:
     import streamlit as st
     # Streamlit Cloud Secrets 우선 (배포 환경)
-    SUPABASE_URL = st.secrets.get("SUPABASE_URL", os.getenv("SUPABASE_URL"))
-    SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", os.getenv("SUPABASE_KEY"))
-    SUPABASE_SERVICE_ROLE_KEY = st.secrets.get("SUPABASE_SERVICE_ROLE_KEY", os.getenv("SUPABASE_SERVICE_ROLE_KEY"))
+    if hasattr(st, 'secrets'):
+        try:
+            SUPABASE_URL = st.secrets["SUPABASE_URL"]
+        except:
+            pass
+        try:
+            SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+        except:
+            pass
+        try:
+            SUPABASE_SERVICE_ROLE_KEY = st.secrets["SUPABASE_SERVICE_ROLE_KEY"]
+        except:
+            pass
 except:
-    # Streamlit이 없는 경우 (일반 Python 스크립트)
+    pass
+
+# 환경 변수 폴백 (로컬 개발용)
+if not SUPABASE_URL:
     SUPABASE_URL = os.getenv("SUPABASE_URL")
+if not SUPABASE_KEY:
     SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+if not SUPABASE_SERVICE_ROLE_KEY:
     SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
 # Supabase 클라이언트 초기화
