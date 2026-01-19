@@ -5102,7 +5102,7 @@ def page_breed():
         can_breed = False
     
     # 믹스 버튼과 자동 선택 버튼을 좌우로 배치
-    col_breed_btn, col_auto_btn = st.columns(2)
+    col_auto_btn, col_breed_btn = st.columns(2)
     
     with col_auto_btn:
         if len(st.session_state.instances) >= 2:
