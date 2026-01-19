@@ -153,12 +153,12 @@ SKILL_GRADE_WEIGHTS = {
 
 # 외형 변이 등급 확률
 APPEARANCE_MUTATION_GRADE_PROBS = {
-    "Normal": 0.70,
+    "Normal": 0.68,
     "Rare": 0.20,
     "Epic": 0.07,
     "Unique": 0.02,
-    "Legendary": 0.008,
-    "Mystic": 0.002
+    "Legendary": 0.015,
+    "Mystic": 0.005
 }
 
 # 컬러 마스터 데이터 - JSON 파일에서 로드됨 (data/colors.json)
