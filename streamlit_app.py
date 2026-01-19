@@ -4587,6 +4587,123 @@ def page_battle():
     
     current_stage = st.session_state.current_stage
     
+    # 전투 결과가 있으면 먼저 표시 (전투 선택 UI 건너뜀)
+    if "battle_result" in st.session_state:
+        result = st.session_state.battle_result
+        
+        st.markdown(f"**현재 스테이지**: Stage {current_stage}")
+        st.markdown("---")
+        st.markdown(f"### 📊 전투 결과 - Stage {result.get('stage', 1)}")
+        
+        if result["winner"] == "player":
+            st.success("🎉 승리!")
+            # 풍선은 한 번만 표시
+            if not result.get("balloons_shown", False):
+                st.balloons()
+                result["balloons_shown"] = True
+            st.info(f"✨ 다음 스테이지 진출! Stage {st.session_state.current_stage} 도전 가능!")
+            
+            # 보상 수령 UI
+            if "battle_reward" in st.session_state:
+                st.markdown("---")
+                st.markdown("### 🎁 승리 보상")
+                
+                reward = st.session_state.battle_reward
+                
+                col_reward1, col_reward2 = st.columns([1, 2])
+                with col_reward1:
+                    display_instance_card(reward, show_details=False)
+                
+                with col_reward2:
+                    st.markdown(f"**{reward['name']}**")
+                    reward_power = calculate_power_score(reward["stats"])
+                    st.markdown(f"💪 전투력: **{format_korean_number(reward_power)}**")
+                    
+                    col_s1, col_s2, col_s3 = st.columns(3)
+                    with col_s1:
+                        st.metric("HP", f"{reward['stats']['hp']:,}")
+                    with col_s2:
+                        st.metric("ATK", f"{reward['stats']['atk']:,}")
+                    with col_s3:
+                        st.metric("MS", f"{reward['stats']['ms']:,}")
+                    
+                    st.markdown("**스킬:**")
+                    for i in range(1, 4):
+                        acc_key = f"accessory_{i}"
+                        if reward.get(acc_key):
+                            skill_id = reward[acc_key]["id"]
+                            if skill_id in SKILL_MASTER:
+                                skill = SKILL_MASTER[skill_id]
+                                st.markdown(f"- 슬롯 {i}: {skill['name']} ({skill['grade']})")
+                        else:
+                            st.markdown(f"- 슬롯 {i}: 없음")
+                    
+                    # 개체 수 제한 체크
+                    max_instances = st.session_state.get("max_instances", 200)
+                    current_count = len(st.session_state.instances)
+                    
+                    if current_count >= max_instances:
+                        st.error(f"⚠️ 개체 목록이 최대 {max_instances}개를 초과했습니다!")
+                        st.info(f"💡 보상을 받으려면 일부 개체를 삭제해주세요. (현재: {current_count}/{max_instances})")
+                        
+                        if st.button("🗑️ 개체 삭제하러 가기", use_container_width=True):
+                            st.session_state.page = "bulk_delete"
+                            st.rerun()
+                    else:
+                        if st.button("🎁 보상 수령", type="primary", use_container_width=True):
+                            # 인벤토리에 추가
+                            st.session_state.instances.append(reward)
+                            # 도감 업데이트
+                            update_collection(reward)
+                            save_game_data()
+                            del st.session_state.battle_reward
+                            st.success("보상을 획득했습니다!")
+                            time.sleep(1)
+                            st.rerun()
+        
+        elif result["winner"] == "enemy":
+            st.error("💀 패배...")
+        else:
+            st.info("🤝 무승부")
+        
+        # 최종 상태
+        st.markdown("---")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("**🔵 플레이어**")
+            player_final_hp = result["player_final_hp"]
+            player_max_hp = result["player"]["stats"]["hp"]
+            hp_percent = (player_final_hp / player_max_hp) * 100 if player_max_hp > 0 else 0
+            
+            st.metric("최종 HP", f"{player_final_hp:,}/{player_max_hp:,}")
+            st.progress(hp_percent / 100.0)
+            
+        with col2:
+            st.markdown("**🔴 적군")
+            enemy_final_hp = result["enemy_final_hp"]
+            enemy_max_hp = result["enemy"]["stats"]["hp"]
+            hp_percent = (enemy_final_hp / enemy_max_hp) * 100 if enemy_max_hp > 0 else 0
+            
+            st.metric("최종 HP", f"{enemy_final_hp:,}/{enemy_max_hp:,}")
+            st.progress(hp_percent / 100.0)
+        
+        # 전투 로그
+        st.markdown("### 📜 전투 로그")
+        log_text = "\n".join(result["log"])
+        st.text_area("로그", value=log_text, height=400, disabled=True)
+        
+        # 다시 전투 버튼
+        if st.button("🔄 다시 전투", use_container_width=True):
+            del st.session_state.battle_result
+            if "battle_in_progress" in st.session_state:
+                del st.session_state.battle_in_progress
+            if "battle_reward" in st.session_state:
+                del st.session_state.battle_reward
+            st.rerun()
+        
+        return  # 전투 결과 표시 후 함수 종료
+    
+    # 전투 결과가 없을 때만 전투 선택 UI 표시
     st.markdown(f"""
     ### 🎮 전투 시스템
     - **1:1 턴제 자동 전투**
