@@ -947,6 +947,7 @@ class BattleInstance:
         self.invincible = 0  # 무적 턴
         self.stunned = 0  # 스턴 턴
         self.revive_once = False  # 1회 부활
+        self.auto_revive_used = False  # 자동 부활 사용 여부 (전투당 1회)
         self.auto_revive_hp = 0  # 자동 부활 시 HP
         self.time_loop = 0  # 타임루프 턴
         self.saved_state = None  # 저장된 상태
@@ -1157,6 +1158,10 @@ class Battle:
         Returns:
             (실제 회복량, 변환된 쉴드량)
         """
+        # 힐 차단 디버프 확인
+        if any(d.buff_type == "heal_block" for d in target.debuffs):
+            return 0, 0  # 회복 불가, 0 반환
+        
         before_hp = target.current_hp
         target.current_hp = min(target.max_hp, target.current_hp + heal_amount)
         actual_heal = target.current_hp - before_hp
@@ -1328,8 +1333,8 @@ class Battle:
                 msg += f" (쉴드 +{overheal})"
             result += msg
         
-        elif effect in ["heal_block", "heal_conditional", "heal_sacrifice", "heal_nullify", "heal_ms", "heal_allbuff", "heal_regen", "heal_maxhp", "heal"]:
-            # 기본 회복 (오버힐 → 쉴드 변환)
+        elif effect in ["heal_block", "heal_conditional", "heal_sacrifice", "heal_nullify", "heal_ms", "heal_allbuff", "heal_regen", "heal_maxhp"]:
+            # 각 특수 효과는 아래에서 개별 처리 (이것은 미처리 경우를 위한 폴백)
             heal_amount = int(attacker.max_hp * skill.get("value", 0.10))
             actual_heal, overheal = self.apply_heal(attacker, heal_amount)
             msg = f" HP {actual_heal} 회복!"
@@ -1390,10 +1395,43 @@ class Battle:
             attacker.add_buff("counter", skill.get("value", 0.50), duration)
             result += f" {duration}턴간 {int(skill.get('value',0.50)*100)}% 반격!"
         
-        elif effect in ["crit_chance", "dmg_boost_once", "atk_def_trade", "atk_hp_trade", "dmg_hp_based"]:
-            # 공격 버프 계열 (간소화)
-            attacker.add_buff("atk_boost", 0.20, 1)
-            result += f" 공격력 강화!"
+        elif effect == "dmg_boost_once":
+            # 1턴간 데미지 +150%
+            if not self.check_dodge_simple(defender):
+                dmg_boost = skill.get("value", 1.5)
+                dmg = int(attacker.current_atk * (1.0 + dmg_boost))
+                self.apply_damage(attacker, defender, dmg)
+                result += f" 1턴 강화! {dmg} 데미지 (+{int(dmg_boost*100)}%)"
+            else:
+                dodged = self.check_and_consume_dodge(defender, defender_name)
+                result += f" -> {dodged}"
+        
+        elif effect == "atk_hp_trade":
+            # ATK 증가 대신 HP 소모 (지속 버프)
+            atk_boost = skill.get("atk_boost", 0.7)
+            hp_cost = skill.get("hp_cost", 0.05)
+            duration = skill.get("duration", 6)
+            attacker.add_buff("atk_boost", atk_boost, duration)
+            hp_loss = int(attacker.max_hp * hp_cost)
+            attacker.current_hp = max(1, attacker.current_hp - hp_loss)
+            result += f" ATK +{int(atk_boost*100)}% ({duration}턴), HP -{hp_loss} 소모"
+        
+        elif effect == "dmg_hp_based":
+            # 적 HP 비례 데미지 (이미 1646줄에서 제대로 구현됨)
+            if not self.check_dodge_simple(defender):
+                missing_hp = 1.0 - defender.get_hp_percent()
+                max_bonus = skill.get("max_bonus", 0.5)
+                bonus = missing_hp * max_bonus
+                dmg = int(attacker.current_atk * (1.0 + bonus))
+                self.apply_damage(attacker, defender, dmg)
+                result += f" {dmg} 데미지! (적 잃은 HP 비례)"
+            else:
+                dodged = self.check_and_consume_dodge(defender, defender_name)
+                result += f" -> {dodged}"
+        
+        elif effect == "atk_def_trade":
+            # 미구현된 스킬 (설명 필요)
+            result += f" (미구현: atk_def_trade)"
         
         # ==================== MS/유틸 효과 ====================
         elif effect == "first_strike":
@@ -1439,13 +1477,13 @@ class Battle:
         
         elif effect in ["dodge_multi", "dodge_ms_buff", "dodge_ms_debuff"]:
             # 횟수 기반 회피 (확정 회피)
-            dodge_count = skill.get("duration", 2)  # duration을 회피 횟수로 사용
+            dodge_count = int(skill.get("dodge", skill.get("duration", 1)))  # "dodge" 파라미터 또는 duration 사용
             attacker.add_buff("dodge_count", 1.0, 999, count=dodge_count)  # count로 횟수 관리
             result += f" {dodge_count}회 확정 회피!"
             
             # 추가 효과
             if effect == "dodge_ms_buff":
-                ms_duration = skill.get("duration", 2)
+                ms_duration = skill.get("duration", 3)
                 ms_boost = int(attacker.base_ms * skill.get("ms_boost", 0.6))
                 attacker.add_buff("ms_boost", ms_boost, ms_duration)
                 result += f" + MS +{int(skill.get('ms_boost', 0.6)*100)}%!"
@@ -1456,6 +1494,11 @@ class Battle:
         
         # ==================== 추가 회복 효과 (Legendary/Mystic) ====================
         elif effect == "heal_full_noheal":
+            # 힐 차단 디버프 확인
+            if any(d.buff_type == "heal_block" for d in attacker.debuffs):
+                result += " (힐 차단 중!)"
+                return result
+            
             heal = attacker.max_hp - attacker.current_hp
             attacker.current_hp = attacker.max_hp
             duration = skill.get("duration", 3)
@@ -1463,6 +1506,11 @@ class Battle:
             result += f" HP 완전 회복! (단, {duration}턴간 자연 회복 불가)"
         
         elif effect == "heal_full_grow":
+            # 힐 차단 디버프 확인
+            if any(d.buff_type == "heal_block" for d in attacker.debuffs):
+                result += " (힐 차단 중!)"
+                return result
+            
             heal = attacker.max_hp - attacker.current_hp
             attacker.current_hp = attacker.max_hp
             duration = skill.get("duration", 5)
@@ -1476,6 +1524,11 @@ class Battle:
             result += f" 부활 버프 획득! (패배 시 HP {int(revive_hp*100)}%로 부활)"
         
         elif effect == "heal_block":
+            # 힐 차단 디버프 확인
+            if any(d.buff_type == "heal_block" for d in attacker.debuffs):
+                result += " (힐 차단 중!)"
+                return result
+            
             heal = int(attacker.max_hp * skill.get("value", 0.1))
             attacker.current_hp = min(attacker.max_hp, attacker.current_hp + heal)
             block_chance = skill.get("block_chance", 0.5)
@@ -1486,16 +1539,26 @@ class Battle:
                 result += f" HP {heal} 회복!"
         
         elif effect == "heal_conditional":
+            # 힐 차단 디버프 확인
+            if any(d.buff_type == "heal_block" for d in attacker.debuffs):
+                result += " (힐 차단 중!)"
+                return result
+            
             hp_threshold = skill.get("hp_threshold", 0.5)
             if attacker.get_hp_percent() <= hp_threshold:
-                heal = int(attacker.max_hp * skill.get("value", 0.3))
+                heal = int(attacker.max_hp * skill.get("value", 0.15))
                 attacker.current_hp = min(attacker.max_hp, attacker.current_hp + heal)
                 result += f" 조건 충족! HP {heal} 회복!"
             else:
                 result += f" (HP {int(hp_threshold*100)}% 이하 시 발동)"
         
         elif effect == "heal_ms":
-            heal = int(attacker.max_hp * skill.get("value", 0.2))
+            # 힐 차단 디버프 확인
+            if any(d.buff_type == "heal_block" for d in attacker.debuffs):
+                result += " (힐 차단 중!)"
+                return result
+            
+            heal = int(attacker.max_hp * skill.get("value", 0.15))
             attacker.current_hp = min(attacker.max_hp, attacker.current_hp + heal)
             duration = skill.get("duration", 2)
             ms_boost = int(attacker.base_ms * skill.get("ms_boost", 0.1))
@@ -1503,31 +1566,51 @@ class Battle:
             result += f" HP {heal} 회복 + MS +{int(skill.get('ms_boost',0.1)*100)}%!"
         
         elif effect == "heal_sacrifice":
+            # 힐 차단 디버프 확인
+            if any(d.buff_type == "heal_block" for d in attacker.debuffs):
+                result += " (힐 차단 중!)"
+                return result
+            
             atk_cost = int(attacker.base_atk * skill.get("atk_cost", 0.1))
             attacker.current_atk = max(1, attacker.current_atk - atk_cost)
-            heal = int(attacker.max_hp * skill.get("value", 0.35))
+            heal = int(attacker.max_hp * skill.get("value", 0.22))
             attacker.current_hp = min(attacker.max_hp, attacker.current_hp + heal)
             result += f" ATK {atk_cost} 희생, HP {heal} 회복!"
         
         elif effect == "heal_maxhp":
+            # 힐 차단 디버프 확인
+            if any(d.buff_type == "heal_block" for d in attacker.debuffs):
+                result += " (힐 차단 중!)"
+                return result
+            
             max_hp_boost = skill.get("max_hp_boost", 0.1)
             hp_increase = int(attacker.max_hp * max_hp_boost)
             attacker.max_hp += hp_increase
-            heal = int(attacker.max_hp * skill.get("value", 0.1))
+            heal = int(attacker.max_hp * skill.get("value", 0.07))
             attacker.current_hp = min(attacker.max_hp, attacker.current_hp + heal)
             result += f" 최대HP +{hp_increase}, HP {heal} 회복!"
         
         elif effect == "heal_cleanse":
-            heal = int(attacker.max_hp * skill.get("value", 0.7))
+            # 힐 차단 디버프 확인
+            if any(d.buff_type == "heal_block" for d in attacker.debuffs):
+                result += " (힐 차단 중!)"
+                return result
+            
+            heal = int(attacker.max_hp * skill.get("value", 0.55))
             attacker.current_hp = min(attacker.max_hp, attacker.current_hp + heal)
             attacker.debuffs.clear()
             result += f" HP {heal} 회복 + 모든 디버프 제거!"
         
         elif effect == "heal_allbuff":
-            heal_amount = int(attacker.max_hp * skill.get("value", 0.4))
+            # 힐 차단 디버프 확인
+            if any(d.buff_type == "heal_block" for d in attacker.debuffs):
+                result += " (힐 차단 중!)"
+                return result
+            
+            heal_amount = int(attacker.max_hp * skill.get("value", 0.25))
             actual_heal, overheal = self.apply_heal(attacker, heal_amount)
             duration = skill.get("duration", 2)
-            stat_boost = skill.get("stat_boost", 0.2)
+            stat_boost = skill.get("stat_boost", 0.25)
             attacker.add_buff("atk_boost", stat_boost, duration)
             attacker.add_buff("ms_boost", int(attacker.base_ms * stat_boost), duration)
             msg = f" HP {actual_heal} 회복 + 전체 스탯 {int(stat_boost*100)}% 증가!"
@@ -1536,19 +1619,29 @@ class Battle:
             result += msg
         
         elif effect == "heal_regen":
-            heal_amount = int(attacker.max_hp * skill.get("value", 0.35))
+            # 힐 차단 디버프 확인
+            if any(d.buff_type == "heal_block" for d in attacker.debuffs):
+                result += " (힐 차단 중!)"
+                return result
+            
+            heal_amount = int(attacker.max_hp * skill.get("value", 0.30))
             actual_heal, overheal = self.apply_heal(attacker, heal_amount)
-            duration = skill.get("duration", 3)
-            attacker.add_buff("regen", skill.get("regen", 0.12), duration)
+            duration = skill.get("duration", 4)
+            attacker.add_buff("regen", skill.get("regen", 0.10), duration)
             msg = f" HP {actual_heal} 회복 + {duration}턴간 지속 회복!"
             if overheal > 0:
                 msg += f" (쉴드 +{overheal})"
             result += msg
         
         elif effect == "heal_revive":
-            heal_amount = int(attacker.max_hp * skill.get("value", 0.3))
+            # 힐 차단 디버프 확인
+            if any(d.buff_type == "heal_block" for d in attacker.debuffs):
+                result += " (힐 차단 중!)"
+                return result
+            
+            heal_amount = int(attacker.max_hp * skill.get("value", 0.45))
             actual_heal, overheal = self.apply_heal(attacker, heal_amount)
-            revive_hp = skill.get("revive_hp", 0.5)
+            revive_hp = skill.get("revive_hp", 0.6)
             attacker.add_buff("revive_once", revive_hp, 999)
             msg = f" HP {actual_heal} 회복 + 1회 부활 버프!"
             if overheal > 0:
@@ -2024,19 +2117,24 @@ class Battle:
         self.add_log(f"=== {name}의 턴 ===")
         
         # 턴 시작 시 버프/디버프 지속시간 감소 (이전 턴에 받은 효과 소진)
+        # 스턴 체크 (tick_buffs 전에 체크하여 정확한 지속시간 반영)
+        if actor.stunned > 0:
+            self.add_log(f"{name}은(는) 행동 불가!")
+            actor.stunned -= 1
+            return
+        
         actor.tick_buffs()
         
         # 턴 시작 효과 (지속 회복 등) - 행동자만
         for buff in actor.buffs:
             if buff.type == "regen":
+                # 힐 차단 디버프 확인
+                if any(d.buff_type == "heal_block" for d in actor.debuffs):
+                    self.add_log(f"{name} 지속 회복 차단 (힐 차단 중)")
+                    continue
                 heal = int(actor.max_hp * buff.value)
                 actor.current_hp = min(actor.max_hp, actor.current_hp + heal)
                 self.add_log(f"{name} HP {heal} 회복 (지속 회복)")
-        
-        # 스턴 체크
-        if actor.stunned > 0:
-            self.add_log(f"{name}은(는) 행동 불가!")
-            return
         
         # 스킬 선택 및 사용
         skill_slot = self.select_skill(actor)
@@ -2048,10 +2146,76 @@ class Battle:
         result = self.basic_attack(actor)
         self.add_log(result)
         
+        # 턴 종료 후 DoT 데미지 처리 (상대방)
+        opponent = self.enemy if actor.is_player else self.player
+        opponent_name = "적군" if actor.is_player else "아군"
+        
+        # 상대방의 DoT 디버프 처리
+        for debuff in opponent.debuffs:
+            if debuff.buff_type == "dot_dmg":
+                # immortal 버프 확인
+                has_immortal = any(buff.type == "immortal" for buff in opponent.buffs)
+                dot_damage = int(opponent.max_hp * debuff.value)
+                
+                if has_immortal:
+                    # immortal 중이면 HP 최소 1 보장
+                    opponent.current_hp = max(1, opponent.current_hp - dot_damage)
+                    self.add_log(f"{opponent_name} DoT {dot_damage} 데미지! (불멸 상태, HP: {opponent.current_hp})")
+                else:
+                    opponent.current_hp = max(0, opponent.current_hp - dot_damage)
+                    self.add_log(f"{opponent_name} DoT {dot_damage} 데미지! (HP: {opponent.current_hp})")
+        
         return True  # 행동 발생함
     
     def check_victory(self) -> bool:
         """승패 판정"""
+        # 플레이어 부활 체크
+        if self.player.current_hp <= 0:
+            # 1. revive_once 체크 (1회 부활)
+            revive_buff = next((buff for buff in self.player.buffs if buff.type == "revive_once"), None)
+            if revive_buff:
+                revive_hp = int(self.player.max_hp * revive_buff.value)
+                self.player.current_hp = max(1, revive_hp)
+                self.player.buffs = [b for b in self.player.buffs if b.type != "revive_once"]
+                self.add_log(f"아군이 부활했습니다! (HP: {self.player.current_hp})")
+                return False
+            
+            # 2. auto_revive 체크 (전투당 1회)
+            auto_revive_buff = next((buff for buff in self.player.buffs if buff.type == "auto_revive"), None)
+            if auto_revive_buff and hasattr(self.player, 'auto_revive_used') and not self.player.auto_revive_used:
+                revive_hp = int(self.player.max_hp * auto_revive_buff.value)
+                self.player.current_hp = max(1, revive_hp)
+                self.player.auto_revive_used = True  # 한 번만 사용
+                # 모든 쿨다운 초기화
+                for i in range(1, 4):
+                    setattr(self.player, f"skill_{i}_cooldown", 0)
+                self.add_log(f"아군이 자동으로 부활했습니다! (HP: {self.player.current_hp}) + 모든 스킬 쿨다운 초기화")
+                return False
+        
+        # 적 부활 체크
+        if self.enemy.current_hp <= 0:
+            # 1. revive_once 체크
+            revive_buff = next((buff for buff in self.enemy.buffs if buff.type == "revive_once"), None)
+            if revive_buff:
+                revive_hp = int(self.enemy.max_hp * revive_buff.value)
+                self.enemy.current_hp = max(1, revive_hp)
+                self.enemy.buffs = [b for b in self.enemy.buffs if b.type != "revive_once"]
+                self.add_log(f"적군이 부활했습니다! (HP: {self.enemy.current_hp})")
+                return False
+            
+            # 2. auto_revive 체크
+            auto_revive_buff = next((buff for buff in self.enemy.buffs if buff.type == "auto_revive"), None)
+            if auto_revive_buff and hasattr(self.enemy, 'auto_revive_used') and not self.enemy.auto_revive_used:
+                revive_hp = int(self.enemy.max_hp * auto_revive_buff.value)
+                self.enemy.current_hp = max(1, revive_hp)
+                self.enemy.auto_revive_used = True
+                # 모든 쿨다운 초기화
+                for i in range(1, 4):
+                    setattr(self.enemy, f"skill_{i}_cooldown", 0)
+                self.add_log(f"적군이 자동으로 부활했습니다! (HP: {self.enemy.current_hp}) + 모든 스킬 쿨다운 초기화")
+                return False
+        
+        # 부활이 없으면 일반 승패 판정
         if self.player.current_hp <= 0 and self.enemy.current_hp <= 0:
             self.winner = "draw"
             self.add_log("무승부!")
@@ -2698,8 +2862,9 @@ def format_korean_number(n: int) -> str:
         return str(n)
 
 
+@st.cache_data(ttl=600)  # 10분 캐싱
 def get_all_users_representatives() -> List[Dict]:
-    """모든 사용자의 대표 유닛 정보 수집"""
+    """모든 사용자의 대표 유닛 정보 수집 (캐싱됨)"""
     representatives = []
     
     # 방법 1: Supabase에서 시도
@@ -2727,10 +2892,14 @@ def get_all_users_representatives() -> List[Dict]:
             rep_inst = next((inst for inst in instances if inst.get("id") == rep_id), None)
             
             if rep_inst and rep_inst.get("stats"):
+                # SVG를 미리 캐싱
+                svg = get_instance_svg(rep_inst, size=120)
+                
                 representatives.append({
                     "username": username,
                     "instance": rep_inst,
-                    "power_score": calculate_power_score(rep_inst["stats"])
+                    "power_score": calculate_power_score(rep_inst["stats"]),
+                    "svg_cached": svg
                 })
     except Exception as e:
         print(f"⚠️ Supabase 랭킹 조회 실패: {e}")
@@ -2752,10 +2921,13 @@ def get_all_users_representatives() -> List[Dict]:
                             
                             if rep_inst and rep_inst.get("stats"):
                                 username = filename.replace("_data.json", "")
+                                svg = get_instance_svg(rep_inst, size=120)
+                                
                                 representatives.append({
                                     "username": username,
                                     "instance": rep_inst,
-                                    "power_score": calculate_power_score(rep_inst["stats"])
+                                    "power_score": calculate_power_score(rep_inst["stats"]),
+                                    "svg_cached": svg
                                 })
                     except Exception:
                         continue
@@ -4263,8 +4435,11 @@ def page_ranking():
         # 내 정보 간결하게
         col1, col2, col3 = st.columns([1, 3, 2])
         with col1:
-            svg = get_instance_svg(my_rep["instance"], size=80)
-            st.markdown(svg, unsafe_allow_html=True)
+            # 캐시된 SVG 사용 (이미 렌더링됨)
+            svg_120 = my_rep.get("svg_cached", get_instance_svg(my_rep["instance"], size=120))
+            # 크기 축소 (120 -> 80)
+            svg_80 = svg_120.replace('width="120"', 'width="80"').replace('height="120"', 'height="80"')
+            st.markdown(svg_80, unsafe_allow_html=True)
         with col2:
             st.markdown(f"**{my_rep['instance']['name']}**")
             st.markdown(f"💪 **{format_korean_number(my_rep['power_score'])}** | HP {my_rep['instance']['stats']['hp']:,} | ATK {my_rep['instance']['stats']['atk']:,} | MS {my_rep['instance']['stats']['ms']:,}")
@@ -4313,7 +4488,8 @@ def page_ranking():
                 </div>
                 """, unsafe_allow_html=True)
                 
-                svg = get_instance_svg(rep["instance"], size=120)
+                # 캐시된 SVG 사용
+                svg = rep.get("svg_cached", get_instance_svg(rep["instance"], size=120))
                 st.markdown(f'<div style="text-align: center;">{svg}</div>', unsafe_allow_html=True)
                 st.markdown(f'<div style="text-align: center; font-weight: bold; margin-top: 10px;">{rep["instance"]["name"]}</div>', unsafe_allow_html=True)
                 
@@ -4353,8 +4529,10 @@ def page_ranking():
                 st.markdown(f"**{rank}**")
             
             with col2:
-                svg = get_instance_svg(rep["instance"], size=50)
-                st.markdown(svg, unsafe_allow_html=True)
+                # 캐시된 SVG를 크기 축소하여 사용
+                svg_120 = rep.get("svg_cached", get_instance_svg(rep["instance"], size=120))
+                svg_50 = svg_120.replace('width="120"', 'width="50"').replace('height="120"', 'height="50"')
+                st.markdown(svg_50, unsafe_allow_html=True)
             
             with col3:
                 name_style = "color: #ff6b6b; font-weight: bold;" if is_me else ""
