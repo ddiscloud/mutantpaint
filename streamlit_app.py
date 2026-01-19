@@ -6752,10 +6752,14 @@ def page_dev():
     with col1:
         # 안전하게 범위 내 값으로 제한
         current_bonus = st.session_state.get("mutation_bonus", 0.0)
-        if current_bonus < 0.0:
+        try:
+            current_bonus = float(current_bonus)
+            if current_bonus < 0.0 or current_bonus != current_bonus:  # NaN 체크
+                current_bonus = 0.0
+            elif current_bonus > 0.5:
+                current_bonus = 0.5
+        except (TypeError, ValueError):
             current_bonus = 0.0
-        elif current_bonus > 0.5:
-            current_bonus = 0.5
             
         mutation_bonus = st.slider(
             "돌연변이 확률 보너스",
