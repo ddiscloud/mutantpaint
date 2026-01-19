@@ -131,7 +131,18 @@ def render_instance_svg_cached(instance_id: str, main_color_id: str, sub_color_i
 # ============================================================================
 
 # 등급별 가중치 (외형 유전용)
+# 외형 등급별 유전 가중치 (조정됨)
 GRADE_WEIGHTS = {
+    "Normal": 100,
+    "Rare": 85,
+    "Epic": 65,
+    "Unique": 50,
+    "Legendary": 40,
+    "Mystic": 30
+}
+
+# 스킬 등급별 유전 가중치 (기존 값 유지)
+SKILL_GRADE_WEIGHTS = {
     "Normal": 100,
     "Rare": 80,
     "Epic": 55,
@@ -321,6 +332,31 @@ def inherit_appearance_item(parent1_item: Dict, parent2_item: Dict) -> Dict:
     # 새 딕셔너리 생성하여 반환
     return {"grade": selected[0], "id": selected[1]}
 
+def inherit_skill_item(parent1_item: Dict, parent2_item: Dict) -> Dict:
+    """스킬(악세서리) 항목 유전: 기존 등급 가중치 유지"""
+    candidates = []
+    
+    # 부모1의 항목
+    grade1 = parent1_item["grade"]
+    weight1 = SKILL_GRADE_WEIGHTS[grade1]
+    candidates.append((parent1_item["grade"], parent1_item["id"], weight1))
+    
+    # 부모2의 항목 (같은 id면 가중치 합산)
+    if parent1_item["id"] != parent2_item["id"]:
+        grade2 = parent2_item["grade"]
+        weight2 = SKILL_GRADE_WEIGHTS[grade2]
+        candidates.append((parent2_item["grade"], parent2_item["id"], weight2))
+    else:
+        # 같은 항목이면 가중치 합산
+        candidates[0] = (parent1_item["grade"], parent1_item["id"], weight1 + SKILL_GRADE_WEIGHTS[parent2_item["grade"]])
+    
+    # 가중치 기반 선택
+    weights = [c[2] for c in candidates]
+    selected = random.choices(candidates, weights=weights, k=1)[0]
+    
+    # 새 딕셔너리 생성하여 반환
+    return {"grade": selected[0], "id": selected[1]}
+
 def mutate_stat(current_val: int, stat_type: str) -> Tuple[int, int]:
     """능력치 돌연변이: 증가량 반환"""
     if stat_type == "hp":
@@ -403,24 +439,24 @@ def breed(parent1: Dict, parent2: Dict) -> Dict:
         parent2["appearance"]["pattern"]
     )
     
-    # 악세서리 유전
+    # 악세서리 유전 (스킬 전용 가중치 사용)
     accessory_1 = None
     if parent1.get("accessory_1") or parent2.get("accessory_1"):
         p1_acc1 = parent1.get("accessory_1") or {"grade": "Normal", "id": "acc1_normal01"}
         p2_acc1 = parent2.get("accessory_1") or {"grade": "Normal", "id": "acc1_normal01"}
-        accessory_1 = inherit_appearance_item(p1_acc1, p2_acc1)
+        accessory_1 = inherit_skill_item(p1_acc1, p2_acc1)
     
     accessory_2 = None
     if parent1.get("accessory_2") or parent2.get("accessory_2"):
         p1_acc2 = parent1.get("accessory_2") or {"grade": "Normal", "id": "acc2_normal01"}
         p2_acc2 = parent2.get("accessory_2") or {"grade": "Normal", "id": "acc2_normal01"}
-        accessory_2 = inherit_appearance_item(p1_acc2, p2_acc2)
+        accessory_2 = inherit_skill_item(p1_acc2, p2_acc2)
     
     accessory_3 = None
     if parent1.get("accessory_3") or parent2.get("accessory_3"):
         p1_acc3 = parent1.get("accessory_3") or {"grade": "Normal", "id": "acc3_normal01"}
         p2_acc3 = parent2.get("accessory_3") or {"grade": "Normal", "id": "acc3_normal01"}
-        accessory_3 = inherit_appearance_item(p1_acc3, p2_acc3)
+        accessory_3 = inherit_skill_item(p1_acc3, p2_acc3)
     
     # 돌연변이 시스템
     mutation_count = 0
