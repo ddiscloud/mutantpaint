@@ -5024,27 +5024,8 @@ def page_breed():
     # 부모 선택
     st.markdown("### 부모 선택")
     
-    # 자동 선택 버튼과 필터
-    col_auto, col_filter = st.columns([2, 1])
-    
-    with col_auto:
-        if len(st.session_state.instances) >= 2:
-            if st.button("⚡ 최고 스탯 자동 선택", use_container_width=True):
-                # 전투력 순으로 정렬
-                sorted_instances = sorted(
-                    st.session_state.instances,
-                    key=lambda x: calculate_power_score(x["stats"]),
-                    reverse=True
-                )
-                # 상위 2개 선택
-                st.session_state.selected_parent_a = sorted_instances[0]["id"]
-                st.session_state.selected_parent_b = sorted_instances[1]["id"]
-                st.rerun()
-        else:
-            st.info("💡 자동 선택을 사용하려면 최소 2개의 개체가 필요합니다.")
-    
-    with col_filter:
-        show_favorites_only = st.checkbox("⭐ 즐겨찾기만", value=False, key="breed_favorites_filter")
+    # 즐겨찾기 필터
+    show_favorites_only = st.checkbox("⭐ 즐겨찾기만 표시", value=False, key="breed_favorites_filter")
     
     st.markdown("---")
     
@@ -5120,8 +5101,27 @@ def page_breed():
         st.error(f"⚠️ 개체 목록이 최대 {max_instances}개를 초과했습니다. 일부 개체를 삭제해주세요.")
         can_breed = False
     
-    # 믹스 버튼
-    if st.button("🧬 믹스 시작", disabled=not can_breed, use_container_width=True):
+    # 믹스 버튼과 자동 선택 버튼을 좌우로 배치
+    col_breed_btn, col_auto_btn = st.columns(2)
+    
+    with col_auto_btn:
+        if len(st.session_state.instances) >= 2:
+            if st.button("⚡ 최고 스탯 자동 선택", use_container_width=True, key="auto_select_bottom"):
+                # 전투력 순으로 정렬
+                sorted_instances = sorted(
+                    st.session_state.instances,
+                    key=lambda x: calculate_power_score(x["stats"]),
+                    reverse=True
+                )
+                # 상위 2개 선택
+                st.session_state.selected_parent_a = sorted_instances[0]["id"]
+                st.session_state.selected_parent_b = sorted_instances[1]["id"]
+                st.rerun()
+    
+    with col_breed_btn:
+        breed_button_clicked = st.button("🧬 믹스 시작", disabled=not can_breed, use_container_width=True)
+    
+    if breed_button_clicked:
         # 믹스 전 도감 상태 저장
         if "collection" not in st.session_state:
             st.session_state.collection = {
