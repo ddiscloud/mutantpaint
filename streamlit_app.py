@@ -1731,7 +1731,7 @@ class Battle:
         
         elif effect == "ms_multi_hit":
             if not self.check_dodge_simple(defender):
-                hits = max(1, int(attacker.current_ms / 100))
+                hits = min(15, max(1, int(attacker.current_ms / 100)))
                 dmg_per = skill.get("dmg_per", 0.18)
                 total_dmg = 0
                 for _ in range(hits):
@@ -1745,7 +1745,7 @@ class Battle:
         
         elif effect == "ms_multi_hit_double":
             if not self.check_dodge_simple(defender):
-                hits = max(1, int(attacker.current_ms / 50))
+                hits = min(15, max(1, int(attacker.current_ms / 50)))
                 dmg_per = skill.get("dmg_per", 0.15)
                 total_dmg = 0
                 for _ in range(hits):
