@@ -21,7 +21,7 @@ from supabase_db import (
     load_master_colors, load_master_patterns, load_master_skills,
     save_game_data as save_game_data_db, load_game_data as load_game_data_db,
     check_user_exists, create_user,
-    get_user_password_hash, load_season_history as load_season_history_db,
+    get_user_password_hash, update_user_password, load_season_history as load_season_history_db,
     save_season_history as save_season_history_db,
     init_supabase_db,
     # 랜덤박스 & 우편함
@@ -6748,6 +6748,77 @@ def page_dev():
         time.sleep(1)
         st.rerun()
 
+
+def page_settings():
+    """설정 페이지 - 비밀번호 변경"""
+    st.title("⚙️ 설정")
+    
+    st.markdown("### 🔐 비밀번호 변경")
+    
+    with st.form("change_password_form"):
+        current_password = st.text_input(
+            "현재 비밀번호",
+            type="password",
+            placeholder="현재 비밀번호를 입력하세요",
+            max_chars=50
+        )
+        
+        new_password = st.text_input(
+            "새 비밀번호",
+            type="password",
+            placeholder="새 비밀번호를 입력하세요 (최소 4자)",
+            max_chars=50
+        )
+        
+        new_password_confirm = st.text_input(
+            "새 비밀번호 확인",
+            type="password",
+            placeholder="새 비밀번호를 다시 입력하세요",
+            max_chars=50
+        )
+        
+        submitted = st.form_submit_button("비밀번호 변경", use_container_width=True, type="primary")
+        
+        if submitted:
+            # 입력값 검증
+            if not current_password:
+                st.error("현재 비밀번호를 입력해주세요!")
+            elif not new_password:
+                st.error("새 비밀번호를 입력해주세요!")
+            elif len(new_password) < 4:
+                st.error("새 비밀번호는 최소 4자 이상이어야 합니다!")
+            elif new_password != new_password_confirm:
+                st.error("새 비밀번호가 일치하지 않습니다!")
+            elif current_password == new_password:
+                st.error("새 비밀번호는 현재 비밀번호와 달라야 합니다!")
+            else:
+                # 현재 비밀번호 확인
+                username = st.session_state.username
+                if verify_password(username, current_password):
+                    # 새 비밀번호로 변경
+                    new_password_hash = hash_password(new_password)
+                    if update_user_password(username, new_password_hash):
+                        st.session_state.password_hash = new_password_hash
+                        st.success("✅ 비밀번호가 성공적으로 변경되었습니다!")
+                        time.sleep(1.5)
+                        st.rerun()
+                    else:
+                        st.error("❌ 비밀번호 변경에 실패했습니다. 다시 시도해주세요.")
+                else:
+                    st.error("❌ 현재 비밀번호가 일치하지 않습니다!")
+    
+    st.markdown("---")
+    
+    # 계정 정보
+    st.markdown("### 👤 계정 정보")
+    st.info(f"""
+    **사용자 이름:** {st.session_state.username}  
+    **가입 시즌:** Season {st.session_state.get("join_season", "Beta")}  
+    **개체 수:** {len(st.session_state.instances)}개  
+    **대표 설정:** {"✅ 완료" if st.session_state.get("representative_id") else "❌ 미설정"}
+    """)
+
+
 def page_login():
     """로그인 페이지"""
     # 시즌 정보 로드
@@ -7004,6 +7075,11 @@ def main():
         else:
             st.markdown("**👑 대표 유닛:** 미설정")
     with col3:
+        # 설정 버튼 추가
+        if st.button("⚙️ 설정", key="settings_button_top", use_container_width=True):
+            st.session_state.page = "settings"
+            st.rerun()
+        
         if st.button("로그아웃", use_container_width=True):
             # 세션 상태 초기화
             for key in list(st.session_state.keys()):
@@ -7044,6 +7120,8 @@ def main():
         page_season_info()
     elif st.session_state.page == "mailbox":
         page_mailbox()
+    elif st.session_state.page == "settings":
+        page_settings()
     elif st.session_state.page == "admin":
         page_admin()
     elif st.session_state.page == "dev":

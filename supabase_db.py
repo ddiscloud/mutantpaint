@@ -162,6 +162,21 @@ def get_user_password_hash(username: str) -> Optional[str]:
         return None
 
 
+def update_user_password(username: str, new_password_hash: str) -> bool:
+    """사용자 비밀번호 업데이트"""
+    try:
+        client = get_supabase_client()
+        client.table("users").update({
+            "password_hash": new_password_hash,
+            "updated_at": datetime.now().isoformat()
+        }).eq("username", username).execute()
+        print(f"✅ 사용자 '{username}' 비밀번호 변경 완료")
+        return True
+    except Exception as e:
+        print(f"❌ 비밀번호 변경 실패 ({username}): {e}")
+        return False
+
+
 # ============================================================================
 # 시즌 히스토리 함수
 # ============================================================================
