@@ -2165,7 +2165,7 @@ class Battle:
         
         # 상대방의 DoT 디버프 처리
         for debuff in opponent.debuffs:
-            if debuff.buff_type == "dot_dmg":
+            if debuff and hasattr(debuff, 'buff_type') and debuff.buff_type == "dot_dmg":
                 # immortal 버프 확인
                 has_immortal = any(buff.type == "immortal" for buff in opponent.buffs)
                 dot_damage = int(opponent.max_hp * debuff.value)
