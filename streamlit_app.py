@@ -1306,6 +1306,19 @@ class Battle:
             attacker.current_hp = min(attacker.max_hp, attacker.current_hp + heal_amount)
             result += f" HP {heal_amount} 회복!"
         
+        elif effect == "heal":
+            # 힐 차단 디버프 확인
+            if any(d.buff_type == "heal_block" for d in attacker.debuffs):
+                result += " (힐 차단 중!)"
+                return result
+            
+            heal_amount = int(attacker.max_hp * skill.get("value", 0.1))
+            actual_heal, overheal = self.apply_heal(attacker, heal_amount)
+            msg = f" HP {actual_heal} 회복!"
+            if overheal > 0:
+                msg += f" (쉴드 +{overheal})"
+            result += msg
+        
         elif effect == "regen":
             duration = skill.get("duration", 3)
             attacker.add_buff("regen", skill.get("value", 0.05), duration)
