@@ -1302,11 +1302,6 @@ class Battle:
         
         # ==================== 회복 효과 ====================
         if effect == "heal":
-            heal_amount = int(attacker.max_hp * skill.get("value", 0.1))
-            attacker.current_hp = min(attacker.max_hp, attacker.current_hp + heal_amount)
-            result += f" HP {heal_amount} 회복!"
-        
-        elif effect == "heal":
             # 힐 차단 디버프 확인
             if any(d and d.type == "heal_block" for d in attacker.debuffs):
                 result += " (힐 차단 중!)"
@@ -1346,7 +1341,7 @@ class Battle:
                 msg += f" (쉴드 +{overheal})"
             result += msg
         
-        elif effect in ["heal_block", "heal_conditional", "heal_sacrifice", "heal_nullify", "heal_ms", "heal_allbuff", "heal_regen", "heal_maxhp"]:
+        elif effect in ["heal_dodge", "heal_conditional", "heal_sacrifice", "heal_nullify", "heal_ms", "heal_allbuff", "heal_regen", "heal_maxhp"]:
             # 각 특수 효과는 아래에서 개별 처리 (이것은 미처리 경우를 위한 폴백)
             heal_amount = int(attacker.max_hp * skill.get("value", 0.10))
             actual_heal, overheal = self.apply_heal(attacker, heal_amount)
@@ -1379,12 +1374,25 @@ class Battle:
         
         elif effect == "execute":
             # Finish Blow: HP 임계값 이하 시 데미지 부스트
+            # 회피 체크
+            dodged = self.check_and_consume_dodge(defender, defender_name)
+            if dodged:
+                result += f" -> {dodged}"
+                return result
+            
             hp_threshold = skill.get("hp_threshold", 0.30)
+            dmg_boost = skill.get("dmg_boost", 1.2)
+            
             if defender.current_hp <= int(defender.max_hp * hp_threshold):
-                attacker.add_buff("execute_dmg", skill.get("dmg_boost", 2.0), 1)
-                result += f" 처형 발동! (다음 공격 {int(skill.get('dmg_boost',2.0)*100)}%)"
+                # 처형 조건 충족 - 강화된 공격
+                dmg = int(attacker.current_atk * (1.0 + dmg_boost))
+                self.apply_damage(attacker, defender, dmg)
+                result += f" 처형 발동! {dmg} 데미지! (+{int(dmg_boost*100)}%)"
             else:
-                result += f" (적 HP {int(hp_threshold*100)}% 이하 시 발동)"
+                # 조건 미충족 - 일반 공격
+                dmg = attacker.current_atk
+                self.apply_damage(attacker, defender, dmg)
+                result += f" {dmg} 데미지! (적 HP {int(hp_threshold*100)}% 이하 시 강화)"
         
         elif effect == "multi_hit":
             # 회피 체크 (첫 타격만)
@@ -1409,15 +1417,10 @@ class Battle:
             result += f" {duration}턴간 {int(skill.get('value',0.50)*100)}% 반격!"
         
         elif effect == "dmg_boost_once":
-            # 1턴간 데미지 +150%
-            if not self.check_dodge_simple(defender):
-                dmg_boost = skill.get("value", 1.5)
-                dmg = int(attacker.current_atk * (1.0 + dmg_boost))
-                self.apply_damage(attacker, defender, dmg)
-                result += f" 1턴 강화! {dmg} 데미지 (+{int(dmg_boost*100)}%)"
-            else:
-                dodged = self.check_and_consume_dodge(defender, defender_name)
-                result += f" -> {dodged}"
+            # 1턴간 데미지 +150% 버프 부여 (다음 기본 공격에 적용)
+            dmg_boost = skill.get("value", 1.5)
+            attacker.add_buff("dmg_boost_once", dmg_boost, 1)
+            result += f" 1턴간 데미지 +{int(dmg_boost*100)}% 버프!"
         
         elif effect == "atk_hp_trade":
             # ATK 증가 대신 HP 소모 (지속 버프)
@@ -1536,7 +1539,8 @@ class Battle:
             attacker.add_buff("auto_revive", revive_hp, 999)
             result += f" 부활 버프 획득! (패배 시 HP {int(revive_hp*100)}%로 부활)"
         
-        elif effect == "heal_block":
+        elif effect == "heal_dodge":
+            # Shield Heal: 회복 + 확률적 회피 획득 (heal_block과 이름 충돌 방지)
             # 힐 차단 디버프 확인
             if any(d and d.type == "heal_block" for d in attacker.debuffs):
                 result += " (힐 차단 중!)"
@@ -2063,6 +2067,17 @@ class Battle:
         # 데미지 계산
         base_dmg = attacker.current_atk * random.uniform(0.8, 1.2)
         
+        # dmg_boost_once 버프 적용 (1턴 데미지 증가)
+        dmg_boost_buff = next((b for b in attacker.buffs if b.type == "dmg_boost_once"), None)
+        if dmg_boost_buff:
+            base_dmg *= (1.0 + dmg_boost_buff.value)
+            attacker.buffs.remove(dmg_boost_buff)  # 1회 사용 후 제거
+        
+        # guaranteed_crit 버프 적용 (확정 크리티컬)
+        crit_buff = next((b for b in attacker.buffs if b.type == "guaranteed_crit"), None)
+        if crit_buff:
+            base_dmg *= (1.0 + crit_buff.value)
+        
         # 방어 감소 적용
         def_modifier = 1.0
         for debuff in defender.debuffs:
@@ -2076,22 +2091,38 @@ class Battle:
         if defender.invincible > 0:
             return f"{attacker_name}의 공격! 하지만 {defender_name}은(는) 무적 상태!"
         
-        # 피해 적용 (쉴드 처리 포함)
-        actual_dmg = self.apply_damage(attacker, defender, final_dmg)
+        # double_hit 버프 체크 (2회 공격)
+        double_hit_buff = next((b for b in attacker.buffs if b.type == "double_hit"), None)
+        hit_count = 2 if double_hit_buff else 1
+        
+        total_dmg = 0
+        for i in range(hit_count):
+            # 피해 적용 (쉴드 처리 포함)
+            actual_dmg = self.apply_damage(attacker, defender, final_dmg)
+            total_dmg += actual_dmg
+            
+            # delayed_burst 버프 체크 (데미지 누적)
+            burst_buff = next((b for b in attacker.buffs if b.type == "delayed_burst"), None)
+            if burst_buff:
+                if not hasattr(attacker, 'delayed_damage'):
+                    attacker.delayed_damage = 0
+                attacker.delayed_damage += actual_dmg
         
         # 반사 데미지
         reflect_dmg = 0
         for buff in defender.buffs:
             if buff.type == "reflect":
-                reflect_dmg += int(actual_dmg * buff.value)
+                reflect_dmg += int(total_dmg * buff.value)
         
         # 쉴드로 막았는지 체크
-        shield_blocked = defender.shield > 0 or (final_dmg > actual_dmg)
+        shield_blocked = defender.shield > 0 or (final_dmg > total_dmg)
         
-        if shield_blocked:
-            result = f"{attacker_name}의 공격! {defender_name}에게 {actual_dmg} 데미지! 🛡️"
+        if hit_count > 1:
+            result = f"{attacker_name}의 2회 공격! {defender_name}에게 총 {total_dmg} 데미지!"
+        elif shield_blocked:
+            result = f"{attacker_name}의 공격! {defender_name}에게 {total_dmg} 데미지! 🛡️"
         else:
-            result = f"{attacker_name}의 공격! {defender_name}에게 {actual_dmg} 데미지!"
+            result = f"{attacker_name}의 공격! {defender_name}에게 {total_dmg} 데미지!"
         
         # 반격 데미지 표시
         if defender.last_counter_damage > 0:
@@ -2126,6 +2157,12 @@ class Battle:
             # 아무도 행동하지 않음 (게이지만 증가)
             return False
         
+        # death_loop를 위한 상태 저장
+        death_loop_buff = next((b for b in actor.buffs if b.type == "death_loop"), None)
+        saved_hp = actor.current_hp if death_loop_buff else None
+        saved_buffs = [Buff(b.type, b.value, b.duration, b.source, b.count) for b in actor.buffs] if death_loop_buff else None
+        saved_debuffs = [Buff(d.type, d.value, d.duration, d.source, d.count) for d in actor.debuffs] if death_loop_buff else None
+        
         # 실제 행동 발생 - 턴 증가
         self.turn += 1
         
@@ -2137,7 +2174,7 @@ class Battle:
         if actor.stunned > 0:
             self.add_log(f"{name}은(는) 행동 불가!")
             actor.stunned -= 1
-            return
+            return True
         
         actor.tick_buffs()
         
@@ -2151,6 +2188,27 @@ class Battle:
                 heal = int(actor.max_hp * buff.value)
                 actor.current_hp = min(actor.max_hp, actor.current_hp + heal)
                 self.add_log(f"{name} HP {heal} 회복 (지속 회복)")
+            
+            # max_hp_grow 버프 처리 (매턴 최대HP 증가)
+            elif buff and buff.type == "max_hp_grow":
+                hp_increase = int(actor.max_hp * buff.value)
+                actor.max_hp += hp_increase
+                actor.current_hp += hp_increase  # 현재 HP도 함께 증가
+                self.add_log(f"{name} 최대HP +{hp_increase} (성장)")
+            
+            # random_effect 버프 처리
+            elif buff and buff.type == "random_effect":
+                self._apply_random_effect(actor, name)
+        
+        # delayed_burst 폭발 체크 (버프 duration이 0이 되면 폭발)
+        burst_buff = next((b for b in actor.buffs if b.type == "delayed_burst" and b.duration <= 0), None)
+        if burst_buff and hasattr(actor, 'delayed_damage') and actor.delayed_damage > 0:
+            opponent = self.enemy if actor.is_player else self.player
+            burst_dmg = actor.delayed_damage
+            opponent.current_hp = max(0, opponent.current_hp - burst_dmg)
+            opponent_name = "적군" if actor.is_player else "아군"
+            self.add_log(f"💥 {name} 누적 데미지 폭발! {opponent_name}에게 {burst_dmg} 데미지!")
+            actor.delayed_damage = 0
         
         # 스킬 선택 및 사용
         skill_slot = self.select_skill(actor)
@@ -2161,6 +2219,14 @@ class Battle:
         # 기본 공격
         result = self.basic_attack(actor)
         self.add_log(result)
+        
+        # double_speed 버프 체크 (2배속 - 추가 행동)
+        double_speed_buff = next((b for b in actor.buffs if b.type == "double_speed"), None)
+        if double_speed_buff:
+            self.add_log(f"⚡ {name} 2배속 추가 행동!")
+            # 추가 기본 공격
+            result = self.basic_attack(actor)
+            self.add_log(result)
         
         # 턴 종료 후 DoT 데미지 처리 (상대방)
         opponent = self.enemy if actor.is_player else self.player
@@ -2181,7 +2247,54 @@ class Battle:
                     opponent.current_hp = max(0, opponent.current_hp - dot_damage)
                     self.add_log(f"{opponent_name} DoT {dot_damage} 데미지! (HP: {opponent.current_hp})")
         
+        # death_loop 체크: 사망 시 턴 시작으로 되돌림
+        if actor.current_hp <= 0 and death_loop_buff and saved_hp is not None:
+            actor.current_hp = saved_hp
+            actor.buffs = saved_buffs
+            actor.debuffs = saved_debuffs
+            # death_loop 버프 duration 감소
+            for b in actor.buffs:
+                if b.type == "death_loop":
+                    b.duration -= 1
+                    if b.duration <= 0:
+                        actor.buffs.remove(b)
+                    break
+            self.add_log(f"⏰ {name} 시간 되돌림! HP {saved_hp}로 복구!")
+        
         return True  # 행동 발생함
+    
+    def _apply_random_effect(self, actor: BattleInstance, name: str):
+        """랜덤 효과 적용"""
+        effects = [
+            ("heal", 0.1),      # HP 10% 회복
+            ("atk_boost", 0.2), # ATK 20% 증가
+            ("ms_boost", 0.3),  # MS 30% 증가
+            ("shield", 0.1),    # 쉴드 10%
+            ("damage", 0.15),   # 적에게 15% 데미지
+        ]
+        effect_type, value = random.choice(effects)
+        
+        if effect_type == "heal":
+            heal = int(actor.max_hp * value)
+            actor.current_hp = min(actor.max_hp, actor.current_hp + heal)
+            self.add_log(f"🎲 {name} 랜덤 회복! HP +{heal}")
+        elif effect_type == "atk_boost":
+            actor.add_buff("atk_boost", value, 1)
+            self.add_log(f"🎲 {name} 랜덤 ATK +{int(value*100)}%!")
+        elif effect_type == "ms_boost":
+            ms_boost = int(actor.base_ms * value)
+            actor.add_buff("ms_boost", ms_boost, 1)
+            self.add_log(f"🎲 {name} 랜덤 MS +{int(value*100)}%!")
+        elif effect_type == "shield":
+            shield = int(actor.max_hp * value)
+            actor.shield += shield
+            self.add_log(f"🎲 {name} 랜덤 쉴드 +{shield}!")
+        elif effect_type == "damage":
+            opponent = self.enemy if actor.is_player else self.player
+            dmg = int(opponent.current_hp * value)
+            opponent.current_hp = max(0, opponent.current_hp - dmg)
+            opponent_name = "적군" if actor.is_player else "아군"
+            self.add_log(f"🎲 {name} 랜덤 공격! {opponent_name}에게 {dmg} 데미지!")
     
     def check_victory(self) -> bool:
         """승패 판정"""

@@ -88,7 +88,7 @@
     "slot": 1,
     "name": "Shield Heal",
     "resource": "horns.svg",
-    "effect": "heal_block",
+    "effect": "heal_dodge",
     "value": 0.08,
     "block_chance": 0.4,
     "cooldown": 7,
@@ -778,6 +778,7 @@
     "resource": "slippers.svg",
     "effect": "counter",
     "value": 1.0,
+    "duration": 1,
     "cooldown": 5,
     "desc": "공격 받으면 100% 데미지 반격"
   },
