@@ -1689,13 +1689,14 @@ class Battle:
     
     def _convert_legacy_skill(self, skill: dict) -> list:
         """기존 단일 effect 스킬을 멀티 이펙트 형식으로 변환"""
+        # 이미 effects 배열이 있으면 그대로 반환 (멀티 이펙트 스킬)
+        if "effects" in skill:
+            return skill["effects"]
+        
+        # 레거시 effect 필드가 없으면 빈 배열
         effect = skill.get("effect", "")
         if not effect:
             return []
-        
-        # 이미 effects 배열이 있으면 그대로 반환
-        if "effects" in skill:
-            return skill["effects"]
         
         # 기존 effect를 멀티 이펙트로 변환
         effects = []
