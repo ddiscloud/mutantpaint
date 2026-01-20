@@ -1293,29 +1293,11 @@ class Battle:
         return msg
     
     def _effect_regen(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
-        """지속 회복 버프 - 발동 턴에도 즉시 회복"""
+        """지속 회복 버프"""
         duration = params.get("duration", 3)
-        value = params.get("value", 0.05)
-        
-        # 발동 턴에 즉시 한 번 회복
-        if any(d and d.type == "heal_block" for d in attacker.debuffs):
-            immediate_heal = 0
-            heal_msg = "(힐 차단 중!)"
-        else:
-            immediate_heal = int(attacker.max_hp * value)
-            actual_heal, shield_gained = self.apply_heal(attacker, immediate_heal)
-            if shield_gained > 0:
-                heal_msg = f"HP {actual_heal} 회복 (쉴드 +{shield_gained})"
-            else:
-                heal_msg = f"HP {actual_heal} 회복"
-        
-        # 지속 회복 버프 추가 (남은 턴 수는 duration - 1)
-        if duration > 1:
-            attacker.add_buff("regen", value, duration - 1)
-            return f"{heal_msg} + {duration - 1}턴간 추가 HP {int(value*100)}% 회복"
-        else:
-            return heal_msg
-    
+        attacker.add_buff("regen", params.get("value", 0.05), duration)
+        return f"{duration}턴간 매턴 HP {int(params.get('value', 0.05)*100)}% 회복"
+
     def _effect_drain(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
         """HP 흡수"""
         if ctx.get("dodged"):
@@ -1505,6 +1487,26 @@ class Battle:
         # MS 버프는 base_ms 기준으로 계산
         if buff_type == "ms_boost":
             value = int(attacker.base_ms * params.get("value", 0.2))
+        
+        # regen 버프는 발동 턴에 즉시 회복 + 남은 턴 버프
+        if buff_type == "regen":
+            # 힐 차단 확인
+            if any(d and d.type == "heal_block" for d in attacker.debuffs):
+                heal_msg = "(힐 차단 중!)"
+            else:
+                immediate_heal = int(attacker.max_hp * params.get("value", 0.05))
+                actual_heal, shield_gained = self.apply_heal(attacker, immediate_heal)
+                if shield_gained > 0:
+                    heal_msg = f"HP {actual_heal} 회복 (쉴드 +{shield_gained})"
+                else:
+                    heal_msg = f"HP {actual_heal} 회복"
+            
+            # 남은 턴에 대해 버프 추가
+            if duration > 1:
+                attacker.add_buff(buff_type, params.get("value", 0.05), duration - 1)
+                return f"{heal_msg} + {duration - 1}턴간 추가 HP {int(params.get('value',0.05)*100)}% 회복"
+            else:
+                return heal_msg
         
         attacker.add_buff(buff_type, value, duration)
         
