@@ -1599,9 +1599,12 @@ class Battle:
             max_hp_boost = skill.get("max_hp_boost", 0.1)
             hp_increase = int(attacker.max_hp * max_hp_boost)
             attacker.max_hp += hp_increase
-            heal = int(attacker.max_hp * skill.get("value", 0.07))
-            attacker.current_hp = min(attacker.max_hp, attacker.current_hp + heal)
-            result += f" 최대HP +{hp_increase}, HP {heal} 회복!"
+            heal_amount = int(attacker.max_hp * skill.get("value", 0.07))
+            actual_heal, overheal = self.apply_heal(attacker, heal_amount)
+            msg = f" 최대HP +{hp_increase}, HP {actual_heal} 회복!"
+            if overheal > 0:
+                msg += f" (쉴드 +{overheal})"
+            result += msg
         
         elif effect == "heal_cleanse":
             # 힐 차단 디버프 확인
