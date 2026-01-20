@@ -46,10 +46,9 @@ if "supabase_initialized" not in st.session_state:
 # 마스터 데이터 로드 (Supabase에서)
 # ============================================================================
 
-# 마스터 데이터 로드 (캐싱을 위해 session_state 사용)
-@st.cache_data(ttl=3600)  # 1시간 캐싱 (마스터 데이터는 자주 변경되지 않음)
+# 마스터 데이터 로드 (캐싱 비활성화 - 디버깅용)
 def load_master_data_cached():
-    """Supabase에서 마스터 데이터 로드 (캐싱)"""
+    """Supabase에서 마스터 데이터 로드"""
     return {
         "colors": load_master_colors(),
         "patterns": load_master_patterns(),
@@ -1689,6 +1688,13 @@ class Battle:
     
     def _convert_legacy_skill(self, skill: dict) -> list:
         """기존 단일 effect 스킬을 멀티 이펙트 형식으로 변환"""
+        # 디버그 로그
+        print(f"[DEBUG] _convert_legacy_skill called")
+        print(f"[DEBUG] skill keys: {list(skill.keys())}")
+        print(f"[DEBUG] 'effects' in skill: {'effects' in skill}")
+        if 'effects' in skill:
+            print(f"[DEBUG] effects value: {skill['effects']}")
+        
         # 이미 effects 배열이 있으면 그대로 반환 (멀티 이펙트 스킬)
         if "effects" in skill:
             return skill["effects"]
@@ -1932,16 +1938,26 @@ class Battle:
         attacker.cooldowns[skill_slot] = skill.get("cooldown", 3)
         
         # Mystic 스킬 마킹
-        if skill["grade"] == "Mystic":
+        if skill.get("grade") == "Mystic":
             attacker.mystic_used.add(skill_slot)
         
         result = f"{attacker_name}이(가) '{skill['name']}' 사용!"
         
-        # 효과 목록 가져오기 (멀티 이펙트 또는 레거시 변환)
-        effects = self._convert_legacy_skill(skill)
+        # 디버그: skill 객체의 키 확인
+        print(f"[DEBUG] skill name: {skill.get('name')}")
+        print(f"[DEBUG] skill keys: {list(skill.keys())}")
+        print(f"[DEBUG] 'effects' in skill: {'effects' in skill}")
+        
+        # 효과 목록 가져오기 (직접 확인)
+        if "effects" in skill and skill["effects"]:
+            effects = skill["effects"]
+            print(f"[DEBUG] Using skill['effects'] directly: {effects}")
+        else:
+            effects = self._convert_legacy_skill(skill)
+            print(f"[DEBUG] Using _convert_legacy_skill result: {effects}")
         
         if not effects:
-            return result + " 효과 발동!"
+            return result + f" 효과 발동! [DEBUG: effects empty, skill keys={list(skill.keys())}]"
         
         # 회피 체크 (공격 효과가 있는 경우만)
         attack_effects = {"damage", "fixed_dmg_percent", "multi_hit", "execute", "crit_chance",

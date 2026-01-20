@@ -66,9 +66,28 @@ def load_master_skills() -> dict:
         for skill in response.data:
             # skill_data JSONB 필드가 전체 정보를 담고 있음
             skills[skill["id"]] = skill["skill_data"]
-        return skills
+        
+        if skills:
+            print(f"✅ Supabase에서 {len(skills)}개 스킬 로드됨")
+            return skills
+        else:
+            raise Exception("Supabase에서 스킬 데이터가 비어있음")
+            
     except Exception as e:
-        print(f"❌ 스킬 데이터 로드 실패: {e}")
+        print(f"⚠️ Supabase 스킬 로드 실패: {e}")
+        print("📂 로컬 skills.json 파일에서 로드 시도...")
+        
+        # 로컬 폴백
+        import os
+        local_path = os.path.join(os.path.dirname(__file__), "data", "skills.json")
+        if os.path.exists(local_path):
+            import json
+            with open(local_path, "r", encoding="utf-8") as f:
+                skills = json.load(f)
+            print(f"✅ 로컬 파일에서 {len(skills)}개 스킬 로드됨")
+            return skills
+        
+        print("❌ 스킬 데이터 로드 완전 실패")
         return {}
 
 
