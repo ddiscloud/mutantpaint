@@ -4876,7 +4876,7 @@ def generate_battle_reward(boss_power: int, stage: int) -> Dict:
 
 def page_battle():
     """전투 화면"""
-    st.title("⚔️ 전투 - 스테이지 도전")
+    st.title("⚔️ 전투 - 스테이지 보스 도전")
     
     # 현재 스테이지 정보 (세션 스테이트에서 가져오기)
     if "current_stage" not in st.session_state:
