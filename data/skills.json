@@ -94,10 +94,10 @@
     "name": "Shield Heal",
     "resource": "horns.svg",
     "cooldown": 7,
-    "desc": "HP 8% 회복 + 40% 확률로 1회 회피 획득",
+    "desc": "HP 8% 회복 + 다음 공격 40% 회피",
     "effects": [
       {"type": "heal", "value": 0.08},
-      {"type": "dodge_count", "count": 1, "chance": 0.4}
+      {"type": "next_turn_dodge", "value": 0.4}
     ]
   },
   "acc1_normal10": {
