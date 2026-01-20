@@ -1159,7 +1159,7 @@ class Battle:
             (실제 회복량, 변환된 쉴드량)
         """
         # 힐 차단 디버프 확인
-        if any(d.type == "heal_block" for d in target.debuffs):
+        if any(d and d.type == "heal_block" for d in target.debuffs):
             return 0, 0  # 회복 불가, 0 반환
         
         before_hp = target.current_hp
@@ -1308,7 +1308,7 @@ class Battle:
         
         elif effect == "heal":
             # 힐 차단 디버프 확인
-            if any(d.type == "heal_block" for d in attacker.debuffs):
+            if any(d and d.type == "heal_block" for d in attacker.debuffs):
                 result += " (힐 차단 중!)"
                 return result
             
@@ -1508,7 +1508,7 @@ class Battle:
         # ==================== 추가 회복 효과 (Legendary/Mystic) ====================
         elif effect == "heal_full_noheal":
             # 힐 차단 디버프 확인
-            if any(d.type == "heal_block" for d in attacker.debuffs):
+            if any(d and d.type == "heal_block" for d in attacker.debuffs):
                 result += " (힐 차단 중!)"
                 return result
             
@@ -1520,7 +1520,7 @@ class Battle:
         
         elif effect == "heal_full_grow":
             # 힐 차단 디버프 확인
-            if any(d.type == "heal_block" for d in attacker.debuffs):
+            if any(d and d.type == "heal_block" for d in attacker.debuffs):
                 result += " (힐 차단 중!)"
                 return result
             
@@ -1538,7 +1538,7 @@ class Battle:
         
         elif effect == "heal_block":
             # 힐 차단 디버프 확인
-            if any(d.type == "heal_block" for d in attacker.debuffs):
+            if any(d and d.type == "heal_block" for d in attacker.debuffs):
                 result += " (힐 차단 중!)"
                 return result
             
@@ -1553,7 +1553,7 @@ class Battle:
         
         elif effect == "heal_conditional":
             # 힐 차단 디버프 확인
-            if any(d.type == "heal_block" for d in attacker.debuffs):
+            if any(d and d.type == "heal_block" for d in attacker.debuffs):
                 result += " (힐 차단 중!)"
                 return result
             
@@ -1567,7 +1567,7 @@ class Battle:
         
         elif effect == "heal_ms":
             # 힐 차단 디버프 확인
-            if any(d.type == "heal_block" for d in attacker.debuffs):
+            if any(d and d.type == "heal_block" for d in attacker.debuffs):
                 result += " (힐 차단 중!)"
                 return result
             
@@ -1580,7 +1580,7 @@ class Battle:
         
         elif effect == "heal_sacrifice":
             # 힐 차단 디버프 확인
-            if any(d.type == "heal_block" for d in attacker.debuffs):
+            if any(d and d.type == "heal_block" for d in attacker.debuffs):
                 result += " (힐 차단 중!)"
                 return result
             
@@ -1592,7 +1592,7 @@ class Battle:
         
         elif effect == "heal_maxhp":
             # 힐 차단 디버프 확인
-            if any(d.type == "heal_block" for d in attacker.debuffs):
+            if any(d and d.type == "heal_block" for d in attacker.debuffs):
                 result += " (힐 차단 중!)"
                 return result
             
@@ -1605,7 +1605,7 @@ class Battle:
         
         elif effect == "heal_cleanse":
             # 힐 차단 디버프 확인
-            if any(d.type == "heal_block" for d in attacker.debuffs):
+            if any(d and d.type == "heal_block" for d in attacker.debuffs):
                 result += " (힐 차단 중!)"
                 return result
             
@@ -1616,7 +1616,7 @@ class Battle:
         
         elif effect == "heal_allbuff":
             # 힐 차단 디버프 확인
-            if any(d.type == "heal_block" for d in attacker.debuffs):
+            if any(d and d.type == "heal_block" for d in attacker.debuffs):
                 result += " (힐 차단 중!)"
                 return result
             
@@ -1633,7 +1633,7 @@ class Battle:
         
         elif effect == "heal_regen":
             # 힐 차단 디버프 확인
-            if any(d.type == "heal_block" for d in attacker.debuffs):
+            if any(d and d.type == "heal_block" for d in attacker.debuffs):
                 result += " (힐 차단 중!)"
                 return result
             
@@ -1648,7 +1648,7 @@ class Battle:
         
         elif effect == "heal_revive":
             # 힐 차단 디버프 확인
-            if any(d.type == "heal_block" for d in attacker.debuffs):
+            if any(d and d.type == "heal_block" for d in attacker.debuffs):
                 result += " (힐 차단 중!)"
                 return result
             
@@ -2140,9 +2140,9 @@ class Battle:
         
         # 턴 시작 효과 (지속 회복 등) - 행동자만
         for buff in actor.buffs:
-            if buff.type == "regen":
+            if buff and buff.type == "regen":
                 # 힐 차단 디버프 확인
-                if any(d.type == "heal_block" for d in actor.debuffs):
+                if any(d and d.type == "heal_block" for d in actor.debuffs):
                     self.add_log(f"{name} 지속 회복 차단 (힐 차단 중)")
                     continue
                 heal = int(actor.max_hp * buff.value)
@@ -2167,7 +2167,7 @@ class Battle:
         for debuff in opponent.debuffs:
             if debuff and hasattr(debuff, 'type') and debuff.type == "dot_dmg":
                 # immortal 버프 확인
-                has_immortal = any(buff.type == "immortal" for buff in opponent.buffs)
+                has_immortal = any(buff and buff.type == "immortal" for buff in opponent.buffs)
                 dot_damage = int(opponent.max_hp * debuff.value)
                 
                 if has_immortal:
