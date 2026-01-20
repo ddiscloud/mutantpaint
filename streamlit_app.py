@@ -1280,8 +1280,645 @@ class Battle:
         max_priority_idx = priorities.index(max(priorities))
         return available_skills[max_priority_idx]
     
+    # ==================== 개별 효과 처리 함수들 (멀티 이펙트 시스템) ====================
+    
+    def _effect_heal(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
+        """HP 회복 효과"""
+        if any(d and d.type == "heal_block" for d in attacker.debuffs):
+            return "(힐 차단 중!)"
+        heal_amount = int(attacker.max_hp * params.get("value", 0.1))
+        actual_heal, overheal = self.apply_heal(attacker, heal_amount)
+        msg = f"HP {actual_heal} 회복"
+        if overheal > 0:
+            msg += f" (쉴드 +{overheal})"
+        return msg
+    
+    def _effect_regen(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
+        """지속 회복 버프"""
+        duration = params.get("duration", 3)
+        attacker.add_buff("regen", params.get("value", 0.05), duration)
+        return f"{duration}턴간 매턴 HP {int(params.get('value', 0.05)*100)}% 회복"
+    
+    def _effect_drain(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
+        """HP 흡수"""
+        if ctx.get("dodged"):
+            return ""
+        drain_amount = int(defender.current_hp * params.get("value", 0.2))
+        defender.current_hp = max(0, defender.current_hp - drain_amount)
+        attacker.current_hp = min(attacker.max_hp, attacker.current_hp + drain_amount)
+        return f"적 HP {drain_amount} 흡수"
+    
+    def _effect_heal_full(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
+        """HP 완전 회복"""
+        if any(d and d.type == "heal_block" for d in attacker.debuffs):
+            return "(힐 차단 중!)"
+        attacker.current_hp = attacker.max_hp
+        return "HP 완전 회복"
+    
+    def _effect_cleanse(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
+        """디버프 제거"""
+        attacker.debuffs.clear()
+        return "모든 디버프 제거"
+    
+    def _effect_damage(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
+        """기본 데미지"""
+        if ctx.get("dodged"):
+            return ""
+        multiplier = params.get("value", 1.0)
+        dmg = int(attacker.current_atk * multiplier)
+        self.apply_damage(attacker, defender, dmg)
+        return f"{dmg} 데미지"
+    
+    def _effect_fixed_dmg_percent(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
+        """현재 HP 비례 고정 데미지"""
+        if ctx.get("dodged"):
+            return ""
+        dmg = int(defender.current_hp * params.get("value", 0.5))
+        defender.current_hp = max(0, defender.current_hp - dmg)
+        return f"고정 {dmg} 데미지"
+    
+    def _effect_fixed_dmg_maxhp(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
+        """최대 HP 비례 고정 데미지"""
+        dmg = int(defender.max_hp * params.get("value", 0.3))
+        self.apply_damage(attacker, defender, dmg)
+        return f"최대HP {int(params.get('value',0.3)*100)}% 고정 피해 ({dmg})"
+    
+    def _effect_multi_hit(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
+        """다단 히트"""
+        if ctx.get("dodged"):
+            return ""
+        hits = params.get("hits", 2)
+        dmg_per = params.get("dmg_per", 0.4)
+        total_dmg = 0
+        for _ in range(hits):
+            dmg = int(attacker.current_atk * dmg_per * random.uniform(0.8, 1.2))
+            defender.current_hp = max(0, defender.current_hp - dmg)
+            total_dmg += dmg
+        return f"{hits}회 연타! 총 {total_dmg} 데미지"
+    
+    def _effect_execute(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
+        """처형 (HP 낮을 때 강화)"""
+        if ctx.get("dodged"):
+            return ""
+        hp_threshold = params.get("hp_threshold", 0.30)
+        dmg_boost = params.get("dmg_boost", 1.2)
+        
+        if defender.current_hp <= int(defender.max_hp * hp_threshold):
+            dmg = int(attacker.current_atk * (1.0 + dmg_boost))
+            self.apply_damage(attacker, defender, dmg)
+            return f"처형 발동! {dmg} 데미지 (+{int(dmg_boost*100)}%)"
+        else:
+            dmg = attacker.current_atk
+            self.apply_damage(attacker, defender, dmg)
+            return f"{dmg} 데미지 (적 HP {int(hp_threshold*100)}% 이하 시 강화)"
+    
+    def _effect_crit_chance(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
+        """확률 크리티컬"""
+        if ctx.get("dodged"):
+            return ""
+        crit_chance = params.get("value", 0.35)
+        crit_dmg = params.get("crit_dmg", 1.35)
+        if random.random() < crit_chance:
+            dmg = int(attacker.current_atk * crit_dmg)
+            msg = f"크리티컬! {dmg} 데미지"
+        else:
+            dmg = attacker.current_atk
+            msg = f"{dmg} 데미지"
+        self.apply_damage(attacker, defender, dmg)
+        return msg
+    
+    def _effect_triple_crit(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
+        """3회 크리티컬 판정"""
+        if ctx.get("dodged"):
+            return ""
+        crit_chance = params.get("crit_chance", 0.5)
+        crit_dmg = params.get("crit_dmg", 2.0)
+        total_dmg = 0
+        for _ in range(3):
+            if random.random() < crit_chance:
+                dmg = int(attacker.current_atk * crit_dmg)
+            else:
+                dmg = attacker.current_atk
+            self.apply_damage(attacker, defender, dmg)
+            total_dmg += dmg
+        return f"3회 크리티컬 판정! 총 {total_dmg} 데미지"
+    
+    def _effect_dot_dmg(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
+        """즉시 데미지 + 지속 피해"""
+        if ctx.get("dodged"):
+            return ""
+        initial = int(attacker.current_atk * params.get("initial", 1.0))
+        self.apply_damage(attacker, defender, initial)
+        duration = params.get("duration", 3)
+        dot_value = params.get("dot_dmg", 0.2)
+        defender.add_debuff("dot_dmg", dot_value, duration)
+        return f"{initial} 데미지 + {duration}턴간 지속 피해"
+    
+    def _effect_dmg_hp_based(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
+        """적 잃은 HP 비례 추가 데미지"""
+        if ctx.get("dodged"):
+            return ""
+        missing_hp = 1.0 - defender.get_hp_percent()
+        max_bonus = params.get("max_bonus", 0.5)
+        bonus = missing_hp * max_bonus
+        dmg = int(attacker.current_atk * (1.0 + bonus))
+        self.apply_damage(attacker, defender, dmg)
+        return f"{dmg} 데미지 (적 잃은 HP 비례)"
+    
+    def _effect_true_damage(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
+        """관통 데미지 (회피 무시)"""
+        dmg = int(attacker.current_atk * params.get("value", 2.0))
+        self.apply_damage(attacker, defender, dmg)
+        return f"관통 {dmg} 데미지 (회피 무시)"
+    
+    def _effect_pierce_all(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
+        """모든 방어 무시 데미지"""
+        dmg = attacker.current_atk
+        self.apply_damage(attacker, defender, dmg)
+        return f"관통 {dmg} 데미지 (모든 방어 무시)"
+    
+    def _effect_ultra_fixed(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
+        """궁극 고정 피해"""
+        dmg = int(max(defender.current_hp, defender.max_hp) * 0.8)
+        self.apply_damage(attacker, defender, dmg)
+        return f"궁극 고정 피해 {dmg}"
+    
+    def _effect_atk_grow(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
+        """공격 시 ATK 영구 증가"""
+        if ctx.get("dodged"):
+            return ""
+        dmg = attacker.current_atk
+        self.apply_damage(attacker, defender, dmg)
+        attacker.base_atk += dmg
+        attacker.current_atk += dmg
+        return f"{dmg} 데미지 + ATK 영구 +{dmg}"
+    
+    def _effect_ms_multi_hit(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
+        """MS 기반 다단 히트"""
+        if ctx.get("dodged"):
+            return ""
+        hits = min(15, max(1, int(attacker.current_ms / 100)))
+        dmg_per = params.get("dmg_per", 0.18)
+        total_dmg = 0
+        for _ in range(hits):
+            dmg = int(attacker.current_atk * dmg_per)
+            self.apply_damage(attacker, defender, dmg)
+            total_dmg += dmg
+        return f"MS 기반 {hits}회 연타! 총 {total_dmg} 데미지"
+    
+    def _effect_ms_multi_hit_double(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
+        """MS×2 기반 다단 히트"""
+        if ctx.get("dodged"):
+            return ""
+        hits = min(15, max(1, int(attacker.current_ms / 50)))
+        dmg_per = params.get("dmg_per", 0.15)
+        total_dmg = 0
+        for _ in range(hits):
+            dmg = int(attacker.current_atk * dmg_per)
+            self.apply_damage(attacker, defender, dmg)
+            total_dmg += dmg
+        return f"MS×2 기반 {hits}회 연타! 총 {total_dmg} 데미지"
+    
+    def _effect_buff(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
+        """버프 부여"""
+        buff_type = params.get("buff_type", "atk_boost")
+        value = params.get("value", 0.3)
+        duration = params.get("duration", 3)
+        
+        # MS 버프는 base_ms 기준으로 계산
+        if buff_type == "ms_boost":
+            value = int(attacker.base_ms * params.get("value", 0.2))
+        
+        attacker.add_buff(buff_type, value, duration)
+        
+        # 버프 타입별 메시지
+        buff_names = {
+            "atk_boost": f"ATK +{int(params.get('value',0.3)*100)}%",
+            "ms_boost": f"MS +{int(params.get('value',0.2)*100)}%",
+            "def_boost": f"방어 +{int(params.get('value',0.1)*100)}%",
+            "lifesteal": f"흡혈 {int(params.get('value',0.25)*100)}%",
+            "counter": f"반격 {int(params.get('value',0.5)*100)}%",
+            "reflect": f"반사 {int(params.get('value',0.5)*100)}%",
+            "regen": f"HP {int(params.get('value',0.05)*100)}% 회복",
+            "dodge_chance": f"회피 {int(params.get('value',0.5)*100)}%",
+            "guaranteed_crit": f"확정 크리티컬 +{int(params.get('value',0.5)*100)}%",
+            "dmg_boost_once": f"데미지 +{int(params.get('value',1.5)*100)}%",
+            "double_speed": "2배속 행동",
+            "double_hit": "2회 공격",
+            "invincible": "무적",
+            "immortal": "불사",
+            "auto_revive": f"부활 HP {int(params.get('value',1.0)*100)}%",
+            "revive_once": f"1회 부활 HP {int(params.get('value',0.6)*100)}%",
+            "max_hp_grow": f"매턴 최대HP {int(params.get('value',0.05)*100)}% 증가",
+            "random_effect": "랜덤 효과",
+            "death_loop": "사망 시 턴 되돌리기",
+            "delayed_burst": "데미지 누적 후 폭발",
+            "atk_stack": f"매턴 ATK +{int(params.get('value',0.05)*100)}% 누적"
+        }
+        buff_desc = buff_names.get(buff_type, buff_type)
+        return f"{duration}턴간 {buff_desc}"
+    
+    def _effect_debuff(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
+        """적에게 디버프"""
+        debuff_type = params.get("debuff_type", "atk_reduce")
+        value = params.get("value", 0.2)
+        duration = params.get("duration", 2)
+        defender.add_debuff(debuff_type, value, duration)
+        
+        debuff_names = {
+            "atk_reduce": f"적 ATK -{int(value*100)}%",
+            "ms_reduce": f"적 MS -{int(value*100)}%",
+            "def_reduce": f"적 방어 -{int(value*100)}%",
+            "heal_block": "적 힐 차단",
+            "dot_dmg": f"적 매턴 {int(value*100)}% 피해",
+            "no_regen": "자연 회복 불가"
+        }
+        debuff_desc = debuff_names.get(debuff_type, debuff_type)
+        return f"{duration}턴간 {debuff_desc}"
+    
+    def _effect_self_debuff(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
+        """자신에게 디버프"""
+        debuff_type = params.get("debuff_type", "vulnerability")
+        value = params.get("value", 0.3)
+        duration = params.get("duration", 5)
+        attacker.add_debuff(debuff_type, value, duration)
+        
+        debuff_names = {
+            "vulnerability": f"받는 피해 +{int(value*100)}%",
+            "heal_reduce": f"회복 -{int(value*100)}%",
+            "recoil_hp": f"종료 시 HP {int(value*100)}% 손실",
+            "no_regen": "자연 회복 불가"
+        }
+        debuff_desc = debuff_names.get(debuff_type, debuff_type)
+        return f"({debuff_desc})"
+    
+    def _effect_dodge_count(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
+        """횟수 기반 확정 회피"""
+        count = int(params.get("count", params.get("value", 1)))
+        attacker.add_buff("dodge_count", 1.0, 999, count=count)
+        return f"{count}회 확정 회피"
+    
+    def _effect_next_turn_dodge(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
+        """다음 공격 확률 회피"""
+        attacker.next_turn_dodge_active = True
+        attacker.next_turn_dodge_chance = params.get("value", 0.9)
+        return f"다음 공격 {int(params.get('value', 0.9)*100)}% 회피"
+    
+    def _effect_stun(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
+        """스턴"""
+        defender.stunned = params.get("duration", 1)
+        return f"적 {params.get('duration', 1)}턴 행동 불가"
+    
+    def _effect_extra_action(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
+        """추가 행동"""
+        attacker.speed_gauge += attacker.current_ms + defender.current_ms
+        return "추가 행동 획득"
+    
+    def _effect_hp_cost(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
+        """HP 소모"""
+        hp_cost = int(attacker.max_hp * params.get("value", 0.1))
+        attacker.current_hp = max(1, attacker.current_hp - hp_cost)
+        return f"HP {hp_cost} 소모"
+    
+    def _effect_atk_cost(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
+        """ATK 희생"""
+        atk_cost = int(attacker.base_atk * params.get("value", 0.1))
+        attacker.current_atk = max(1, attacker.current_atk - atk_cost)
+        return f"ATK {atk_cost} 희생"
+    
+    def _effect_max_hp_increase(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
+        """최대 HP 증가"""
+        hp_increase = int(attacker.max_hp * params.get("value", 0.1))
+        attacker.max_hp += hp_increase
+        return f"최대HP +{hp_increase}"
+    
+    def _effect_atk_perma_increase(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
+        """ATK 영구 증가"""
+        atk_increase = int(attacker.base_atk * params.get("value", 0.15))
+        attacker.base_atk += atk_increase
+        attacker.current_atk += atk_increase
+        return f"ATK 영구 +{int(params.get('value',0.15)*100)}%"
+    
+    def _effect_hp_swap(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
+        """HP 교환"""
+        temp_hp = attacker.current_hp
+        attacker.current_hp = defender.current_hp
+        defender.current_hp = temp_hp
+        return f"HP 교환 (아군 {attacker.current_hp}, 적군 {defender.current_hp})"
+    
+    def _effect_stat_swap(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
+        """모든 스탯 교환"""
+        temp_hp, temp_atk, temp_ms = attacker.current_hp, attacker.current_atk, attacker.current_ms
+        attacker.current_hp, attacker.current_atk, attacker.current_ms = defender.current_hp, defender.current_atk, defender.current_ms
+        defender.current_hp, defender.current_atk, defender.current_ms = temp_hp, temp_atk, temp_ms
+        return "모든 스탯 교환"
+    
+    def _effect_rewind(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
+        """시간 역행"""
+        heal = int(attacker.max_hp * 0.5)
+        attacker.current_hp = min(attacker.max_hp, attacker.current_hp + heal)
+        for slot in attacker.cooldowns:
+            attacker.cooldowns[slot] = max(0, attacker.cooldowns[slot] - 1)
+        return f"HP {heal} 회복 + 쿨다운 1턴 감소"
+    
+    def _effect_drain_maxhp(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
+        """적 최대HP 흡수"""
+        drain = int(defender.max_hp * params.get("value", 0.15))
+        defender.max_hp = max(1, defender.max_hp - drain)
+        defender.current_hp = min(defender.current_hp, defender.max_hp)
+        attacker.max_hp += drain
+        attacker.current_hp += drain
+        return f"최대HP {drain} 흡수"
+    
+    def _effect_instant_atk(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
+        """즉발 공격"""
+        if ctx.get("dodged"):
+            return ""
+        dmg = int(attacker.current_atk * params.get("dmg_percent", 0.8))
+        self.apply_damage(attacker, defender, dmg)
+        return f"즉발 {dmg} 데미지"
+    
+    # 효과 처리 함수 맵핑
+    def _get_effect_handlers(self):
+        """효과 타입별 처리 함수 맵핑"""
+        return {
+            # 회복 계열
+            "heal": self._effect_heal,
+            "regen": self._effect_regen,
+            "drain": self._effect_drain,
+            "heal_full": self._effect_heal_full,
+            "cleanse": self._effect_cleanse,
+            
+            # 데미지 계열
+            "damage": self._effect_damage,
+            "fixed_dmg_percent": self._effect_fixed_dmg_percent,
+            "fixed_dmg_maxhp": self._effect_fixed_dmg_maxhp,
+            "multi_hit": self._effect_multi_hit,
+            "execute": self._effect_execute,
+            "crit_chance": self._effect_crit_chance,
+            "triple_crit": self._effect_triple_crit,
+            "dot_dmg": self._effect_dot_dmg,
+            "dmg_hp_based": self._effect_dmg_hp_based,
+            "true_damage": self._effect_true_damage,
+            "pierce_all": self._effect_pierce_all,
+            "ultra_fixed": self._effect_ultra_fixed,
+            "atk_grow": self._effect_atk_grow,
+            "ms_multi_hit": self._effect_ms_multi_hit,
+            "ms_multi_hit_double": self._effect_ms_multi_hit_double,
+            "instant_atk": self._effect_instant_atk,
+            
+            # 버프/디버프 계열
+            "buff": self._effect_buff,
+            "debuff": self._effect_debuff,
+            "self_debuff": self._effect_self_debuff,
+            "dodge_count": self._effect_dodge_count,
+            "next_turn_dodge": self._effect_next_turn_dodge,
+            "stun": self._effect_stun,
+            
+            # 유틸리티 계열
+            "extra_action": self._effect_extra_action,
+            "hp_cost": self._effect_hp_cost,
+            "atk_cost": self._effect_atk_cost,
+            "max_hp_increase": self._effect_max_hp_increase,
+            "atk_perma_increase": self._effect_atk_perma_increase,
+            "hp_swap": self._effect_hp_swap,
+            "stat_swap": self._effect_stat_swap,
+            "rewind": self._effect_rewind,
+            "drain_maxhp": self._effect_drain_maxhp,
+        }
+    
+    def _convert_legacy_skill(self, skill: dict) -> list:
+        """기존 단일 effect 스킬을 멀티 이펙트 형식으로 변환"""
+        effect = skill.get("effect", "")
+        if not effect:
+            return []
+        
+        # 이미 effects 배열이 있으면 그대로 반환
+        if "effects" in skill:
+            return skill["effects"]
+        
+        # 기존 effect를 멀티 이펙트로 변환
+        effects = []
+        
+        # 복합 효과들을 분해
+        if effect == "heal_dodge":
+            # 회복 + 확률적 회피
+            effects.append({"type": "heal", "value": skill.get("value", 0.1)})
+            if random.random() < skill.get("block_chance", 0.5):
+                effects.append({"type": "dodge_count", "count": 1})
+        
+        elif effect == "heal_conditional":
+            # 조건부 회복
+            hp_threshold = skill.get("hp_threshold", 0.5)
+            effects.append({"type": "heal", "value": skill.get("value", 0.15), "condition": f"hp_below_{int(hp_threshold*100)}"})
+        
+        elif effect == "heal_ms":
+            # 회복 + MS 버프
+            effects.append({"type": "heal", "value": skill.get("value", 0.15)})
+            effects.append({"type": "buff", "buff_type": "ms_boost", "value": skill.get("ms_boost", 0.1), "duration": skill.get("duration", 2)})
+        
+        elif effect == "heal_sacrifice":
+            # ATK 희생 + 회복
+            effects.append({"type": "atk_cost", "value": skill.get("atk_cost", 0.1)})
+            effects.append({"type": "heal", "value": skill.get("value", 0.22)})
+        
+        elif effect == "heal_maxhp":
+            # 최대HP 증가 + 회복
+            effects.append({"type": "max_hp_increase", "value": skill.get("max_hp_boost", 0.1)})
+            effects.append({"type": "heal", "value": skill.get("value", 0.07)})
+        
+        elif effect == "heal_cleanse":
+            # 회복 + 디버프 제거
+            effects.append({"type": "heal", "value": skill.get("value", 0.55)})
+            effects.append({"type": "cleanse"})
+        
+        elif effect == "heal_allbuff":
+            # 회복 + 전체 스탯 버프
+            effects.append({"type": "heal", "value": skill.get("value", 0.25)})
+            stat_boost = skill.get("stat_boost", 0.25)
+            duration = skill.get("duration", 2)
+            effects.append({"type": "buff", "buff_type": "atk_boost", "value": stat_boost, "duration": duration})
+            effects.append({"type": "buff", "buff_type": "ms_boost", "value": stat_boost, "duration": duration})
+        
+        elif effect == "heal_regen":
+            # 즉시 회복 + 지속 회복
+            effects.append({"type": "heal", "value": skill.get("value", 0.30)})
+            effects.append({"type": "buff", "buff_type": "regen", "value": skill.get("regen", 0.10), "duration": skill.get("duration", 4)})
+        
+        elif effect == "heal_revive":
+            # 회복 + 부활 버프
+            effects.append({"type": "heal", "value": skill.get("value", 0.45)})
+            effects.append({"type": "buff", "buff_type": "revive_once", "value": skill.get("revive_hp", 0.6), "duration": 999})
+        
+        elif effect == "heal_full_noheal":
+            # 완전 회복 + 자연 회복 불가
+            effects.append({"type": "heal_full"})
+            effects.append({"type": "self_debuff", "debuff_type": "no_regen", "value": 1.0, "duration": skill.get("duration", 3)})
+        
+        elif effect == "heal_full_grow":
+            # 완전 회복 + 최대HP 성장
+            effects.append({"type": "heal_full"})
+            effects.append({"type": "buff", "buff_type": "max_hp_grow", "value": skill.get("max_hp_grow", 0.05), "duration": skill.get("duration", 5)})
+        
+        elif effect == "heal_def":
+            # 회복 + 방어 버프
+            effects.append({"type": "heal", "value": skill.get("value", 0.08)})
+            effects.append({"type": "buff", "buff_type": "def_boost", "value": skill.get("def_boost", 0.10), "duration": skill.get("duration", 1)})
+        
+        elif effect == "damage_buff":
+            # 데미지 + 버프
+            effects.append({"type": "damage", "value": skill.get("dmg_value", 0.5)})
+            effects.append({"type": "buff", "buff_type": skill.get("buff_type", "atk_boost"), "value": skill.get("buff_value", 0.3), "duration": skill.get("duration", 3)})
+        
+        elif effect == "damage_debuff":
+            # 데미지 + 적 디버프
+            effects.append({"type": "damage", "value": skill.get("dmg_value", 1.3)})
+            effects.append({"type": "debuff", "debuff_type": skill.get("debuff_type", "atk_reduce"), "value": skill.get("debuff_value", 0.2), "duration": skill.get("duration", 2)})
+        
+        elif effect == "damage_ms_reduce":
+            # 데미지 + MS 감소
+            effects.append({"type": "damage", "value": skill.get("dmg_value", 0.8)})
+            effects.append({"type": "debuff", "debuff_type": "ms_reduce", "value": skill.get("ms_reduce", 0.3), "duration": skill.get("duration", 3)})
+        
+        elif effect == "dmg_heal_block":
+            # 데미지 + 힐 차단
+            effects.append({"type": "damage", "value": 1.0 + skill.get("dmg_boost", 0.8)})
+            effects.append({"type": "debuff", "debuff_type": "heal_block", "value": 1.0, "duration": skill.get("heal_block", 2)})
+        
+        elif effect == "dmg_heal_reduce":
+            # 데미지 + 자신 회복 감소
+            effects.append({"type": "damage", "value": 1.0 + skill.get("dmg_boost", 1.0)})
+            effects.append({"type": "self_debuff", "debuff_type": "heal_reduce", "value": skill.get("heal_reduce", 0.5), "duration": 999})
+        
+        elif effect == "dmg_ignore_def":
+            # 방어 무시 데미지
+            effects.append({"type": "damage", "value": 1.0 + skill.get("dmg_boost", 0.5), "ignore_def": True})
+        
+        elif effect == "fixed_heal_block":
+            # 고정 피해 + 힐 차단
+            effects.append({"type": "fixed_dmg_percent", "value": skill.get("dmg_percent", 0.7)})
+            effects.append({"type": "debuff", "debuff_type": "heal_block", "value": 1.0, "duration": skill.get("heal_block", 5)})
+        
+        elif effect == "maxhp_perma_atk":
+            # 최대HP 비례 피해 + ATK 영구 증가
+            effects.append({"type": "fixed_dmg_maxhp", "value": skill.get("dmg_percent", 0.4)})
+            effects.append({"type": "atk_perma_increase", "value": skill.get("atk_grow", 0.2)})
+        
+        elif effect == "atk_hp_trade":
+            # HP 소모 + ATK 버프
+            effects.append({"type": "hp_cost", "value": skill.get("hp_cost", 0.05)})
+            effects.append({"type": "buff", "buff_type": "atk_boost", "value": skill.get("atk_boost", 0.7), "duration": skill.get("duration", 6)})
+        
+        elif effect == "atk_vuln":
+            # ATK 버프 + 받는 피해 증가
+            effects.append({"type": "buff", "buff_type": "atk_boost", "value": skill.get("atk_boost", 0.8), "duration": skill.get("duration", 5)})
+            effects.append({"type": "self_debuff", "debuff_type": "vulnerability", "value": skill.get("vuln", 0.3), "duration": skill.get("duration", 5)})
+        
+        elif effect == "atk_recoil":
+            # ATK 버프 + HP 손실 예약
+            effects.append({"type": "buff", "buff_type": "atk_boost", "value": skill.get("atk_boost", 0.6), "duration": skill.get("duration", 5)})
+            effects.append({"type": "self_debuff", "debuff_type": "recoil_hp", "value": skill.get("recoil_hp", 0.2), "duration": skill.get("duration", 5)})
+        
+        elif effect == "atk_stack":
+            # ATK 버프 + 매턴 누적
+            effects.append({"type": "buff", "buff_type": "atk_boost", "value": skill.get("initial", 0.4), "duration": skill.get("duration", 4)})
+            effects.append({"type": "buff", "buff_type": "atk_stack", "value": skill.get("stack_per_turn", 0.05), "duration": skill.get("duration", 4)})
+        
+        elif effect == "atk_buff":
+            effects.append({"type": "buff", "buff_type": "atk_boost", "value": skill.get("value", 0.15), "duration": skill.get("duration", 3)})
+        
+        elif effect == "def_break":
+            effects.append({"type": "debuff", "debuff_type": "def_reduce", "value": skill.get("value", 0.2), "duration": skill.get("duration", 2)})
+        
+        elif effect == "ms_buff":
+            effects.append({"type": "buff", "buff_type": "ms_boost", "value": skill.get("value", 0.2), "duration": skill.get("duration", 3)})
+        
+        elif effect == "ms_atk_buff":
+            effects.append({"type": "buff", "buff_type": "ms_boost", "value": skill.get("ms_boost", 1.2), "duration": skill.get("duration", 4)})
+            effects.append({"type": "buff", "buff_type": "atk_boost", "value": skill.get("atk_boost", 0.2), "duration": skill.get("duration", 4)})
+        
+        elif effect == "lifesteal":
+            effects.append({"type": "buff", "buff_type": "lifesteal", "value": skill.get("value", 0.25), "duration": skill.get("duration", 3)})
+        
+        elif effect == "counter":
+            effects.append({"type": "buff", "buff_type": "counter", "value": skill.get("value", 0.5), "duration": skill.get("duration", 1)})
+        
+        elif effect == "reflect":
+            effects.append({"type": "buff", "buff_type": "reflect", "value": skill.get("value", 0.5), "duration": skill.get("duration", 2)})
+        
+        elif effect == "dodge":
+            effects.append({"type": "buff", "buff_type": "dodge_chance", "value": skill.get("value", 0.5), "duration": skill.get("duration", 1)})
+        
+        elif effect == "dodge_multi":
+            effects.append({"type": "dodge_count", "count": skill.get("value", 1)})
+        
+        elif effect == "dodge_ms_buff":
+            effects.append({"type": "dodge_count", "count": int(skill.get("dodge", 1))})
+            effects.append({"type": "buff", "buff_type": "ms_boost", "value": skill.get("ms_boost", 0.6), "duration": skill.get("duration", 3)})
+        
+        elif effect == "dodge_heal":
+            effects.append({"type": "dodge_count", "count": skill.get("dodge_count", 3)})
+            effects.append({"type": "heal", "value": skill.get("heal_value", 0.15)})
+        
+        elif effect == "dmg_boost_once":
+            effects.append({"type": "buff", "buff_type": "dmg_boost_once", "value": skill.get("value", 1.5), "duration": 1})
+        
+        elif effect == "guaranteed_crit":
+            effects.append({"type": "buff", "buff_type": "guaranteed_crit", "value": skill.get("dmg_boost", 0.5), "duration": skill.get("duration", 2)})
+        
+        elif effect == "double_speed":
+            effects.append({"type": "buff", "buff_type": "double_speed", "value": 1.0, "duration": skill.get("duration", 3)})
+        
+        elif effect == "ms_double_hit":
+            effects.append({"type": "buff", "buff_type": "ms_boost", "value": skill.get("ms_boost", 5.0), "duration": skill.get("duration", 5)})
+            effects.append({"type": "buff", "buff_type": "double_hit", "value": 1.0, "duration": skill.get("duration", 5)})
+        
+        elif effect == "invincible" or effect == "invincible_atk":
+            effects.append({"type": "buff", "buff_type": "invincible", "value": 1.0, "duration": skill.get("duration", 3)})
+        
+        elif effect == "immortal":
+            effects.append({"type": "buff", "buff_type": "immortal", "value": 1.0, "duration": skill.get("duration", 7)})
+        
+        elif effect == "auto_revive":
+            effects.append({"type": "buff", "buff_type": "auto_revive", "value": skill.get("revive_hp", 1.0), "duration": 999})
+        
+        elif effect == "random_effect":
+            effects.append({"type": "buff", "buff_type": "random_effect", "value": 1.0, "duration": skill.get("duration", 5)})
+        
+        elif effect == "death_loop":
+            effects.append({"type": "buff", "buff_type": "death_loop", "value": 1.0, "duration": skill.get("duration", 5)})
+        
+        elif effect == "delayed_burst":
+            effects.append({"type": "buff", "buff_type": "delayed_burst", "value": 1.0, "duration": skill.get("duration", 5)})
+        
+        elif effect == "atk_debuff_enemy":
+            effects.append({"type": "debuff", "debuff_type": "atk_reduce", "value": skill.get("value", 0.8), "duration": skill.get("duration", 2)})
+        
+        elif effect == "ms_debuff_enemy":
+            effects.append({"type": "debuff", "debuff_type": "ms_reduce", "value": skill.get("value", 0.3), "duration": skill.get("duration", 3)})
+        
+        # 단일 효과들
+        elif effect in ["heal", "regen", "drain", "damage", "fixed_dmg_percent", "fixed_dmg_maxhp",
+                       "multi_hit", "execute", "crit_chance", "triple_crit", "dot_dmg", "dmg_hp_based",
+                       "true_damage", "pierce_all", "ultra_fixed", "atk_grow", "ms_multi_hit",
+                       "ms_multi_hit_double", "next_turn_dodge", "stun", "extra_action", "hp_swap",
+                       "stat_swap", "rewind", "drain_maxhp", "instant_atk"]:
+            # 단일 효과는 그대로 변환
+            effect_params = {"type": effect}
+            for key in ["value", "duration", "hits", "dmg_per", "hp_threshold", "dmg_boost",
+                       "crit_chance", "crit_dmg", "initial", "dot_dmg", "max_bonus", "dmg_percent"]:
+                if key in skill:
+                    effect_params[key] = skill[key]
+            effects.append(effect_params)
+        
+        else:
+            # 알 수 없는 효과는 단일 효과로 처리
+            effects.append({"type": effect, **{k: v for k, v in skill.items() if k not in ["grade", "slot", "name", "resource", "effect", "cooldown", "desc"]}})
+        
+        return effects
+    
     def use_skill(self, attacker: BattleInstance, skill_slot: int) -> str:
-        """스킬 사용"""
+        """스킬 사용 (멀티 이펙트 시스템)"""
         if skill_slot not in attacker.skills:
             return "스킬 없음"
         
@@ -1297,755 +1934,55 @@ class Battle:
         if skill["grade"] == "Mystic":
             attacker.mystic_used.add(skill_slot)
         
-        effect = skill.get("effect", "")
         result = f"{attacker_name}이(가) '{skill['name']}' 사용!"
         
-        # ==================== 회복 효과 ====================
-        if effect == "heal":
-            # 힐 차단 디버프 확인
-            if any(d and d.type == "heal_block" for d in attacker.debuffs):
-                result += " (힐 차단 중!)"
-                return result
-            
-            heal_amount = int(attacker.max_hp * skill.get("value", 0.1))
-            actual_heal, overheal = self.apply_heal(attacker, heal_amount)
-            msg = f" HP {actual_heal} 회복!"
-            if overheal > 0:
-                msg += f" (쉴드 +{overheal})"
-            result += msg
+        # 효과 목록 가져오기 (멀티 이펙트 또는 레거시 변환)
+        effects = self._convert_legacy_skill(skill)
         
-        elif effect == "regen":
-            duration = skill.get("duration", 3)
-            attacker.add_buff("regen", skill.get("value", 0.05), duration)
-            result += f" {duration}턴간 매턴 HP {int(skill.get('value', 0.05)*100)}% 회복!"
+        if not effects:
+            return result + " 효과 발동!"
         
-        elif effect == "drain":
-            # 회피 체크
-            dodged = self.check_and_consume_dodge(defender, defender_name)
-            if dodged:
-                result += f" -> {dodged}"
-                return result
-            
-            drain_amount = int(defender.current_hp * skill.get("value", 0.2))
-            defender.current_hp = max(0, defender.current_hp - drain_amount)
-            attacker.current_hp = min(attacker.max_hp, attacker.current_hp + drain_amount)
-            result += f" 적 HP {drain_amount} 흡수!"
+        # 회피 체크 (공격 효과가 있는 경우만)
+        attack_effects = {"damage", "fixed_dmg_percent", "multi_hit", "execute", "crit_chance",
+                         "triple_crit", "dot_dmg", "dmg_hp_based", "atk_grow", "ms_multi_hit",
+                         "ms_multi_hit_double", "drain", "instant_atk"}
+        has_attack = any(e.get("type") in attack_effects for e in effects)
         
-        elif effect == "heal_def":
-            heal_amount = int(attacker.max_hp * skill.get("value", 0.08))
-            actual_heal, overheal = self.apply_heal(attacker, heal_amount)
-            duration = skill.get("duration", 1)
-            attacker.add_buff("def_boost", skill.get("def_boost", 0.10), duration)
-            msg = f" HP {actual_heal} 회복 + {duration}턴 방어 +{int(skill.get('def_boost',0.10)*100)}%!"
-            if overheal > 0:
-                msg += f" (쉴드 +{overheal})"
-            result += msg
-        
-        elif effect in ["heal_dodge", "heal_conditional", "heal_sacrifice", "heal_nullify", "heal_ms", "heal_allbuff", "heal_regen", "heal_maxhp"]:
-            # 각 특수 효과는 아래에서 개별 처리 (이것은 미처리 경우를 위한 폴백)
-            heal_amount = int(attacker.max_hp * skill.get("value", 0.10))
-            actual_heal, overheal = self.apply_heal(attacker, heal_amount)
-            msg = f" HP {actual_heal} 회복!"
-            if overheal > 0:
-                msg += f" (쉴드 +{overheal})"
-            result += msg
-        
-        # ==================== 공격 효과 ====================
-        elif effect == "atk_buff":
-            duration = skill.get("duration", 3)
-            attacker.add_buff("atk_boost", skill.get("value", 0.15), duration)
-            result += f" {duration}턴간 ATK +{int(skill.get('value', 0.15)*100)}%!"
-        
-        elif effect == "def_break":
-            duration = skill.get("duration", 2)
-            defender.add_debuff("def_reduce", skill.get("value", 0.2), duration)
-            result += f" 적 방어 -{int(skill.get('value', 0.2)*100)}% ({duration}턴)!"
-        
-        elif effect == "fixed_dmg_percent":
-            # 회피 체크
-            dodged = self.check_and_consume_dodge(defender, defender_name)
-            if dodged:
-                result += f" -> {dodged}"
-                return result
-            
-            dmg = int(defender.current_hp * skill.get("value", 0.5))
-            defender.current_hp = max(0, defender.current_hp - dmg)
-            result += f" 적에게 고정 {dmg} 데미지!"
-        
-        elif effect == "execute":
-            # Finish Blow: HP 임계값 이하 시 데미지 부스트
-            # 회피 체크
-            dodged = self.check_and_consume_dodge(defender, defender_name)
-            if dodged:
-                result += f" -> {dodged}"
-                return result
-            
-            hp_threshold = skill.get("hp_threshold", 0.30)
-            dmg_boost = skill.get("dmg_boost", 1.2)
-            
-            if defender.current_hp <= int(defender.max_hp * hp_threshold):
-                # 처형 조건 충족 - 강화된 공격
-                dmg = int(attacker.current_atk * (1.0 + dmg_boost))
-                self.apply_damage(attacker, defender, dmg)
-                result += f" 처형 발동! {dmg} 데미지! (+{int(dmg_boost*100)}%)"
-            else:
-                # 조건 미충족 - 일반 공격
-                dmg = attacker.current_atk
-                self.apply_damage(attacker, defender, dmg)
-                result += f" {dmg} 데미지! (적 HP {int(hp_threshold*100)}% 이하 시 강화)"
-        
-        elif effect == "multi_hit":
-            # 회피 체크 (첫 타격만)
-            dodged = self.check_and_consume_dodge(defender, defender_name)
-            if dodged:
-                result += f" -> {dodged}"
-                return result
-            
-            # 다단 히트
-            hits = skill.get("hits", 2)
-            dmg_per = skill.get("dmg_per", 0.80)
-            total_dmg = 0
-            for _ in range(hits):
-                dmg = int(attacker.current_atk * dmg_per * random.uniform(0.8, 1.2))
-                defender.current_hp = max(0, defender.current_hp - dmg)
-                total_dmg += dmg
-            result += f" {hits}회 연타! 총 {total_dmg} 데미지!"
-        
-        elif effect == "counter":
-            duration = skill.get("duration", 1)
-            attacker.add_buff("counter", skill.get("value", 0.50), duration)
-            result += f" {duration}턴간 {int(skill.get('value',0.50)*100)}% 반격!"
-        
-        elif effect == "dmg_boost_once":
-            # 1턴간 데미지 +150% 버프 부여 (다음 기본 공격에 적용)
-            dmg_boost = skill.get("value", 1.5)
-            attacker.add_buff("dmg_boost_once", dmg_boost, 1)
-            result += f" 1턴간 데미지 +{int(dmg_boost*100)}% 버프!"
-        
-        elif effect == "atk_hp_trade":
-            # ATK 증가 대신 HP 소모 (지속 버프)
-            atk_boost = skill.get("atk_boost", 0.7)
-            hp_cost = skill.get("hp_cost", 0.05)
-            duration = skill.get("duration", 6)
-            attacker.add_buff("atk_boost", atk_boost, duration)
-            hp_loss = int(attacker.max_hp * hp_cost)
-            attacker.current_hp = max(1, attacker.current_hp - hp_loss)
-            result += f" ATK +{int(atk_boost*100)}% ({duration}턴), HP -{hp_loss} 소모"
-        
-        elif effect == "dmg_hp_based":
-            # 적 HP 비례 데미지 (이미 1646줄에서 제대로 구현됨)
-            if not self.check_dodge_simple(defender):
-                missing_hp = 1.0 - defender.get_hp_percent()
-                max_bonus = skill.get("max_bonus", 0.5)
-                bonus = missing_hp * max_bonus
-                dmg = int(attacker.current_atk * (1.0 + bonus))
-                self.apply_damage(attacker, defender, dmg)
-                result += f" {dmg} 데미지! (적 잃은 HP 비례)"
-            else:
+        ctx = {"dodged": False}
+        if has_attack:
+            if self.check_dodge_simple(defender):
                 dodged = self.check_and_consume_dodge(defender, defender_name)
                 result += f" -> {dodged}"
+                ctx["dodged"] = True
         
-        elif effect == "atk_def_trade":
-            # 미구현된 스킬 (설명 필요)
-            result += f" (미구현: atk_def_trade)"
+        # 효과 처리 함수 맵
+        handlers = self._get_effect_handlers()
         
-        # ==================== MS/유틸 효과 ====================
-        elif effect == "first_strike":
-            attacker.next_turn_first_strike = True
-            result += f" 다음 턴 선공!"
-        
-        elif effect == "ms_buff":
-            duration = skill.get("duration", 3)
-            ms_boost = int(attacker.base_ms * skill.get("value", 0.2))
-            attacker.add_buff("ms_boost", ms_boost, duration)
-            result += f" {duration}턴간 MS +{int(skill.get('value', 0.2)*100)}% ({ms_boost})!"
-        
-        elif effect == "dodge":
-            # 확률 기반 회피
-            duration = skill.get("duration", 1)
-            attacker.add_buff("dodge_chance", skill.get("value", 0.5), duration)
-            result += f" {duration}턴간 {int(skill.get('value', 0.5)*100)}% 회피!"
-        
-        elif effect == "next_turn_dodge":
-            # 다음 상대 공격 1회 회피 (확률 기반)
-            attacker.next_turn_dodge_active = True
-            attacker.next_turn_dodge_chance = skill.get("value", 0.9)
-            result += f" 다음 공격 {int(skill.get('value', 0.9)*100)}% 회피!"
-        
-        elif effect == "reflect":
-            duration = skill.get("duration", 2)
-            attacker.add_buff("reflect", skill.get("value", 0.5), duration)
-            result += f" {duration}턴간 피해의 {int(skill.get('value', 0.5)*100)}% 반사!"
-        
-        elif effect == "stun":
-            defender.stunned = skill.get("duration", 1)
-            result += f" 적 {skill.get('duration', 1)}턴 행동 불가!"
-        
-        elif effect in ["invincible", "immortal"]:
-            duration = skill.get("duration", 3)
-            attacker.invincible = duration
-            result += f" {duration}턴간 무적!"
-        
-        elif effect in ["ms_debuff_enemy", "atk_debuff_enemy"]:
-            # 적 디버프
-            duration = skill.get("duration", 2)
-            result += f" 적 약화 ({duration}턴)!"
-        
-        elif effect in ["dodge_multi", "dodge_ms_buff", "dodge_ms_debuff"]:
-            # 횟수 기반 회피 (확정 회피)
-            dodge_count = int(skill.get("dodge", skill.get("duration", 1)))  # "dodge" 파라미터 또는 duration 사용
-            attacker.add_buff("dodge_count", 1.0, 999, count=dodge_count)  # count로 횟수 관리
-            result += f" {dodge_count}회 확정 회피!"
+        # 각 효과 순차 처리
+        effect_results = []
+        for effect_data in effects:
+            effect_type = effect_data.get("type", "")
             
-            # 추가 효과
-            if effect == "dodge_ms_buff":
-                ms_duration = skill.get("duration", 3)
-                ms_boost = int(attacker.base_ms * skill.get("ms_boost", 0.6))
-                attacker.add_buff("ms_boost", ms_boost, ms_duration)
-                result += f" + MS +{int(skill.get('ms_boost', 0.6)*100)}%!"
-            elif effect == "dodge_ms_debuff":
-                # 적 MS 감소
-                duration = skill.get("duration", 2)
-                defender.add_debuff("ms_reduce", skill.get("value", 0.3), duration)
-        
-        # ==================== 추가 회복 효과 (Legendary/Mystic) ====================
-        elif effect == "heal_full_noheal":
-            # 힐 차단 디버프 확인
-            if any(d and d.type == "heal_block" for d in attacker.debuffs):
-                result += " (힐 차단 중!)"
-                return result
+            # 조건 체크
+            condition = effect_data.get("condition", "")
+            if condition.startswith("hp_below_"):
+                threshold = int(condition.split("_")[-1]) / 100.0
+                if attacker.get_hp_percent() > threshold:
+                    effect_results.append(f"(HP {int(threshold*100)}% 이하 시 발동)")
+                    continue
             
-            heal = attacker.max_hp - attacker.current_hp
-            attacker.current_hp = attacker.max_hp
-            duration = skill.get("duration", 3)
-            attacker.add_debuff("no_regen", 1.0, duration)
-            result += f" HP 완전 회복! (단, {duration}턴간 자연 회복 불가)"
-        
-        elif effect == "heal_full_grow":
-            # 힐 차단 디버프 확인
-            if any(d and d.type == "heal_block" for d in attacker.debuffs):
-                result += " (힐 차단 중!)"
-                return result
-            
-            heal = attacker.max_hp - attacker.current_hp
-            attacker.current_hp = attacker.max_hp
-            duration = skill.get("duration", 5)
-            max_hp_grow = skill.get("max_hp_grow", 0.05)
-            attacker.add_buff("max_hp_grow", max_hp_grow, duration)
-            result += f" HP 완전 회복! + {duration}턴간 매턴 최대HP {int(max_hp_grow*100)}% 증가"
-        
-        elif effect == "auto_revive":
-            revive_hp = skill.get("revive_hp", 1.0)
-            attacker.add_buff("auto_revive", revive_hp, 999)
-            result += f" 부활 버프 획득! (패배 시 HP {int(revive_hp*100)}%로 부활)"
-        
-        elif effect == "heal_dodge":
-            # Shield Heal: 회복 + 확률적 회피 획득 (heal_block과 이름 충돌 방지)
-            # 힐 차단 디버프 확인
-            if any(d and d.type == "heal_block" for d in attacker.debuffs):
-                result += " (힐 차단 중!)"
-                return result
-            
-            heal = int(attacker.max_hp * skill.get("value", 0.1))
-            attacker.current_hp = min(attacker.max_hp, attacker.current_hp + heal)
-            block_chance = skill.get("block_chance", 0.5)
-            if random.random() < block_chance:
-                attacker.add_buff("dodge_count", 0, 99, count=1)
-                result += f" HP {heal} 회복 + 1회 회피 획득!"
+            # 핸들러 실행
+            if effect_type in handlers:
+                msg = handlers[effect_type](attacker, defender, effect_data, ctx)
+                if msg:
+                    effect_results.append(msg)
             else:
-                result += f" HP {heal} 회복!"
+                # 알 수 없는 효과
+                effect_results.append(f"효과 발동")
         
-        elif effect == "heal_conditional":
-            # 힐 차단 디버프 확인
-            if any(d and d.type == "heal_block" for d in attacker.debuffs):
-                result += " (힐 차단 중!)"
-                return result
-            
-            hp_threshold = skill.get("hp_threshold", 0.5)
-            if attacker.get_hp_percent() <= hp_threshold:
-                heal = int(attacker.max_hp * skill.get("value", 0.15))
-                attacker.current_hp = min(attacker.max_hp, attacker.current_hp + heal)
-                result += f" 조건 충족! HP {heal} 회복!"
-            else:
-                result += f" (HP {int(hp_threshold*100)}% 이하 시 발동)"
-        
-        elif effect == "heal_ms":
-            # 힐 차단 디버프 확인
-            if any(d and d.type == "heal_block" for d in attacker.debuffs):
-                result += " (힐 차단 중!)"
-                return result
-            
-            heal = int(attacker.max_hp * skill.get("value", 0.15))
-            attacker.current_hp = min(attacker.max_hp, attacker.current_hp + heal)
-            duration = skill.get("duration", 2)
-            ms_boost = int(attacker.base_ms * skill.get("ms_boost", 0.1))
-            attacker.add_buff("ms_boost", ms_boost, duration)
-            result += f" HP {heal} 회복 + MS +{int(skill.get('ms_boost',0.1)*100)}%!"
-        
-        elif effect == "heal_sacrifice":
-            # 힐 차단 디버프 확인
-            if any(d and d.type == "heal_block" for d in attacker.debuffs):
-                result += " (힐 차단 중!)"
-                return result
-            
-            atk_cost = int(attacker.base_atk * skill.get("atk_cost", 0.1))
-            attacker.current_atk = max(1, attacker.current_atk - atk_cost)
-            heal = int(attacker.max_hp * skill.get("value", 0.22))
-            attacker.current_hp = min(attacker.max_hp, attacker.current_hp + heal)
-            result += f" ATK {atk_cost} 희생, HP {heal} 회복!"
-        
-        elif effect == "heal_maxhp":
-            # 힐 차단 디버프 확인
-            if any(d and d.type == "heal_block" for d in attacker.debuffs):
-                result += " (힐 차단 중!)"
-                return result
-            
-            max_hp_boost = skill.get("max_hp_boost", 0.1)
-            hp_increase = int(attacker.max_hp * max_hp_boost)
-            attacker.max_hp += hp_increase
-            heal_amount = int(attacker.max_hp * skill.get("value", 0.07))
-            actual_heal, overheal = self.apply_heal(attacker, heal_amount)
-            msg = f" 최대HP +{hp_increase}, HP {actual_heal} 회복!"
-            if overheal > 0:
-                msg += f" (쉴드 +{overheal})"
-            result += msg
-        
-        elif effect == "heal_cleanse":
-            # 힐 차단 디버프 확인
-            if any(d and d.type == "heal_block" for d in attacker.debuffs):
-                result += " (힐 차단 중!)"
-                return result
-            
-            heal = int(attacker.max_hp * skill.get("value", 0.55))
-            attacker.current_hp = min(attacker.max_hp, attacker.current_hp + heal)
-            attacker.debuffs.clear()
-            result += f" HP {heal} 회복 + 모든 디버프 제거!"
-        
-        elif effect == "heal_allbuff":
-            # 힐 차단 디버프 확인
-            if any(d and d.type == "heal_block" for d in attacker.debuffs):
-                result += " (힐 차단 중!)"
-                return result
-            
-            heal_amount = int(attacker.max_hp * skill.get("value", 0.25))
-            actual_heal, overheal = self.apply_heal(attacker, heal_amount)
-            duration = skill.get("duration", 2)
-            stat_boost = skill.get("stat_boost", 0.25)
-            attacker.add_buff("atk_boost", stat_boost, duration)
-            attacker.add_buff("ms_boost", int(attacker.base_ms * stat_boost), duration)
-            msg = f" HP {actual_heal} 회복 + 전체 스탯 {int(stat_boost*100)}% 증가!"
-            if overheal > 0:
-                msg += f" (쉴드 +{overheal})"
-            result += msg
-        
-        elif effect == "heal_regen":
-            # 힐 차단 디버프 확인
-            if any(d and d.type == "heal_block" for d in attacker.debuffs):
-                result += " (힐 차단 중!)"
-                return result
-            
-            heal_amount = int(attacker.max_hp * skill.get("value", 0.30))
-            actual_heal, overheal = self.apply_heal(attacker, heal_amount)
-            duration = skill.get("duration", 4)
-            attacker.add_buff("regen", skill.get("regen", 0.10), duration)
-            msg = f" HP {actual_heal} 회복 + {duration}턴간 지속 회복!"
-            if overheal > 0:
-                msg += f" (쉴드 +{overheal})"
-            result += msg
-        
-        elif effect == "heal_revive":
-            # 힐 차단 디버프 확인
-            if any(d and d.type == "heal_block" for d in attacker.debuffs):
-                result += " (힐 차단 중!)"
-                return result
-            
-            heal_amount = int(attacker.max_hp * skill.get("value", 0.45))
-            actual_heal, overheal = self.apply_heal(attacker, heal_amount)
-            revive_hp = skill.get("revive_hp", 0.6)
-            attacker.add_buff("revive_once", revive_hp, 999)
-            msg = f" HP {actual_heal} 회복 + 1회 부활 버프!"
-            if overheal > 0:
-                msg += f" (쉴드 +{overheal})"
-            result += msg
-        
-        # ==================== 추가 공격 효과 ====================
-        elif effect == "damage":
-            if not self.check_dodge_simple(defender):
-                dmg = int(attacker.current_atk * skill.get("value", 1.5))
-                self.apply_damage(attacker, defender, dmg)
-                result += f" {dmg} 데미지!"
-            else:
-                dodged = self.check_and_consume_dodge(defender, defender_name)
-                result += f" -> {dodged}"
-        
-        elif effect == "true_damage":
-            dmg = int(attacker.current_atk * skill.get("value", 2.0))
-            self.apply_damage(attacker, defender, dmg)
-            result += f" 관통 {dmg} 데미지! (회피 무시)"
-        
-        elif effect == "dot_dmg":
-            if not self.check_dodge_simple(defender):
-                initial = int(attacker.current_atk * skill.get("initial", 1.0))
-                self.apply_damage(attacker, defender, initial)
-                duration = skill.get("duration", 3)
-                dot_value = skill.get("dot_dmg", 0.2)
-                defender.add_debuff("dot_dmg", dot_value, duration)
-                result += f" {initial} 데미지 + {duration}턴간 지속 피해!"
-            else:
-                dodged = self.check_and_consume_dodge(defender, defender_name)
-                result += f" -> {dodged}"
-        
-        elif effect == "dmg_hp_based":
-            if not self.check_dodge_simple(defender):
-                missing_hp = 1.0 - defender.get_hp_percent()
-                max_bonus = skill.get("max_bonus", 0.5)
-                bonus = missing_hp * max_bonus
-                dmg = int(attacker.current_atk * (1.0 + bonus))
-                self.apply_damage(attacker, defender, dmg)
-                result += f" {dmg} 데미지! (적 잃은 HP 비례)"
-            else:
-                dodged = self.check_and_consume_dodge(defender, defender_name)
-                result += f" -> {dodged}"
-        
-        elif effect == "atk_hp_trade":
-            hp_cost = int(attacker.max_hp * skill.get("hp_cost", 0.1))
-            attacker.current_hp = max(1, attacker.current_hp - hp_cost)
-            duration = skill.get("duration", 4)
-            attacker.add_buff("atk_boost", skill.get("atk_boost", 0.3), duration)
-            result += f" HP {hp_cost} 소모, {duration}턴간 ATK +{int(skill.get('atk_boost',0.3)*100)}%!"
-        
-        elif effect == "dmg_boost_once":
-            ms_cost = skill.get("ms_cost", 1)
-            attacker.current_ms = max(1, attacker.current_ms - ms_cost)
-            attacker.add_buff("dmg_boost_once", skill.get("value", 0.8), 1)
-            result += f" MS {ms_cost} 소모, 1턴간 데미지 +{int(skill.get('value',0.8)*100)}%!"
-        
-        elif effect == "lifesteal":
-            duration = skill.get("duration", 3)
-            attacker.add_buff("lifesteal", skill.get("value", 0.25), duration)
-            result += f" {duration}턴간 흡혈 {int(skill.get('value',0.25)*100)}%!"
-        
-        elif effect == "atk_grow":
-            if not self.check_dodge_simple(defender):
-                dmg = attacker.current_atk
-                self.apply_damage(attacker, defender, dmg)
-                attacker.base_atk += dmg
-                attacker.current_atk += dmg
-                result += f" {dmg} 데미지 + ATK 영구 +{dmg}!"
-            else:
-                dodged = self.check_and_consume_dodge(defender, defender_name)
-                result += f" -> {dodged}"
-        
-        elif effect == "ms_multi_hit":
-            if not self.check_dodge_simple(defender):
-                hits = min(15, max(1, int(attacker.current_ms / 100)))
-                dmg_per = skill.get("dmg_per", 0.18)
-                total_dmg = 0
-                for _ in range(hits):
-                    dmg = int(attacker.current_atk * dmg_per)
-                    self.apply_damage(attacker, defender, dmg)
-                    total_dmg += dmg
-                result += f" MS 기반 {hits}회 연타! 총 {total_dmg} 데미지!"
-            else:
-                dodged = self.check_and_consume_dodge(defender, defender_name)
-                result += f" -> {dodged}"
-        
-        elif effect == "ms_multi_hit_double":
-            if not self.check_dodge_simple(defender):
-                hits = min(15, max(1, int(attacker.current_ms / 50)))
-                dmg_per = skill.get("dmg_per", 0.15)
-                total_dmg = 0
-                for _ in range(hits):
-                    dmg = int(attacker.current_atk * dmg_per)
-                    self.apply_damage(attacker, defender, dmg)
-                    total_dmg += dmg
-                result += f" MS×2 기반 {hits}회 연타! 총 {total_dmg} 데미지!"
-            else:
-                dodged = self.check_and_consume_dodge(defender, defender_name)
-                result += f" -> {dodged}"
-        
-        elif effect == "triple_crit":
-            if not self.check_dodge_simple(defender):
-                crit_chance = skill.get("crit_chance", 0.5)
-                crit_dmg = skill.get("crit_dmg", 2.0)
-                total_dmg = 0
-                for i in range(3):
-                    base_dmg = attacker.current_atk
-                    if random.random() < crit_chance:
-                        dmg = int(base_dmg * crit_dmg)
-                    else:
-                        dmg = base_dmg
-                    self.apply_damage(attacker, defender, dmg)
-                    total_dmg += dmg
-                result += f" 3회 크리티컬 판정! 총 {total_dmg} 데미지!"
-            else:
-                dodged = self.check_and_consume_dodge(defender, defender_name)
-                result += f" -> {dodged}"
-        
-        elif effect == "guaranteed_crit":
-            duration = skill.get("duration", 2)
-            dmg_boost = skill.get("dmg_boost", 0.5)
-            attacker.add_buff("guaranteed_crit", dmg_boost, duration)
-            result += f" {duration}턴간 확정 크리티컬 +{int(dmg_boost*100)}%!"
-        
-        elif effect == "maxhp_perma_atk":
-            dmg_percent = skill.get("dmg_percent", 0.4)
-            dmg = int(defender.max_hp * dmg_percent)
-            self.apply_damage(attacker, defender, dmg)
-            atk_grow = skill.get("atk_grow", 0.2)
-            atk_increase = int(attacker.base_atk * atk_grow)
-            attacker.base_atk += atk_increase
-            attacker.current_atk += atk_increase
-            result += f" 최대HP {int(dmg_percent*100)}% 피해 ({dmg}) + ATK 영구 +{int(atk_grow*100)}%!"
-        
-        elif effect == "fixed_dmg_maxhp":
-            percent = skill.get("value", 0.3)
-            dmg = int(defender.max_hp * percent)
-            self.apply_damage(attacker, defender, dmg)
-            result += f" 최대HP {int(percent*100)}% 고정 피해 ({dmg})!"
-        
-        elif effect == "ultra_fixed":
-            dmg = int(max(defender.current_hp, defender.max_hp) * 0.8)
-            self.apply_damage(attacker, defender, dmg)
-            result += f" 궁극 고정 피해 {dmg}!"
-        
-        elif effect == "pierce_all":
-            dmg = attacker.current_atk
-            self.apply_damage(attacker, defender, dmg)
-            result += f" 관통 {dmg} 데미지! (모든 방어 무시)"
-        
-        elif effect == "fixed_heal_block":
-            dmg_percent = skill.get("dmg_percent", 0.7)
-            dmg = int(defender.current_hp * dmg_percent)
-            self.apply_damage(attacker, defender, dmg)
-            heal_block_duration = skill.get("heal_block", 5)
-            defender.add_debuff("heal_block", 1.0, heal_block_duration)
-            result += f" {dmg} 피해 + {heal_block_duration}턴 힐 차단!"
-        
-        elif effect == "damage_buff":
-            if not self.check_dodge_simple(defender):
-                dmg = int(attacker.current_atk * skill.get("dmg_value", 0.5))
-                self.apply_damage(attacker, defender, dmg)
-                result += f" {dmg} 데미지!"
-            else:
-                dodged = self.check_and_consume_dodge(defender, defender_name)
-                result += f" -> {dodged}"
-            
-            buff_type = skill.get("buff_type", "atk_boost")
-            buff_value = skill.get("buff_value", 0.3)
-            duration = skill.get("duration", 3)
-            attacker.add_buff(buff_type, buff_value, duration)
-            result += f" + {duration}턴 ATK +{int(buff_value*100)}%"
-        
-        elif effect == "damage_debuff":
-            if not self.check_dodge_simple(defender):
-                dmg = int(attacker.current_atk * skill.get("dmg_value", 1.3))
-                self.apply_damage(attacker, defender, dmg)
-                result += f" {dmg} 데미지!"
-            else:
-                dodged = self.check_and_consume_dodge(defender, defender_name)
-                result += f" -> {dodged}"
-            
-            debuff_type = skill.get("debuff_type", "atk_reduce")
-            debuff_value = skill.get("debuff_value", 0.2)
-            duration = skill.get("duration", 2)
-            defender.add_debuff(debuff_type, debuff_value, duration)
-            result += f" + 적 ATK -{int(debuff_value*100)}% ({duration}턴)"
-        
-        elif effect == "damage_ms_reduce":
-            if not self.check_dodge_simple(defender):
-                dmg = int(attacker.current_atk * skill.get("dmg_value", 0.8))
-                self.apply_damage(attacker, defender, dmg)
-                result += f" {dmg} 데미지!"
-            else:
-                dodged = self.check_and_consume_dodge(defender, defender_name)
-                result += f" -> {dodged}"
-            
-            duration = skill.get("duration", 3)
-            ms_reduce = skill.get("ms_reduce", 0.3)
-            defender.add_debuff("ms_reduce", ms_reduce, duration)
-            result += f" + 적 MS -{int(ms_reduce*100)}% ({duration}턴)"
-        
-        elif effect == "dmg_heal_block":
-            if not self.check_dodge_simple(defender):
-                dmg_boost = skill.get("dmg_boost", 0.8)
-                dmg = int(attacker.current_atk * (1.0 + dmg_boost))
-                self.apply_damage(attacker, defender, dmg)
-                result += f" {dmg} 데미지!"
-            else:
-                dodged = self.check_and_consume_dodge(defender, defender_name)
-                result += f" -> {dodged}"
-            
-            heal_block_duration = skill.get("heal_block", 2)
-            defender.add_debuff("heal_block", 1.0, heal_block_duration)
-            result += f" + 적 {heal_block_duration}턴 힐 차단!"
-        
-        elif effect == "dmg_heal_reduce":
-            if not self.check_dodge_simple(defender):
-                dmg_boost = skill.get("dmg_boost", 1.0)
-                dmg = int(attacker.current_atk * (1.0 + dmg_boost))
-                self.apply_damage(attacker, defender, dmg)
-                result += f" {dmg} 데미지!"
-            else:
-                dodged = self.check_and_consume_dodge(defender, defender_name)
-                result += f" -> {dodged}"
-            
-            heal_reduce = skill.get("heal_reduce", 0.5)
-            attacker.add_debuff("heal_reduce", heal_reduce, 999)
-            result += f" (자신의 회복 -{int(heal_reduce*100)}%)"
-        
-        elif effect == "dmg_ignore_def":
-            dmg_boost = skill.get("dmg_boost", 0.5)
-            dmg = int(attacker.current_atk * (1.0 + dmg_boost))
-            self.apply_damage(attacker, defender, dmg)
-            result += f" 방어 무시 {dmg} 데미지!"
-        
-        elif effect == "instant_atk":
-            if not self.check_dodge_simple(defender):
-                dmg = int(attacker.current_atk * skill.get("dmg_percent", 0.8))
-                self.apply_damage(attacker, defender, dmg)
-                result += f" 즉발 {dmg} 데미지!"
-            else:
-                dodged = self.check_and_consume_dodge(defender, defender_name)
-                result += f" -> {dodged}"
-        
-        # ==================== 추가 유틸 효과 ====================
-        elif effect == "extra_action":
-            attacker.speed_gauge += attacker.current_ms + defender.current_ms
-            result += f" 추가 행동 획득!"
-        
-        elif effect == "ms_atk_buff":
-            duration = skill.get("duration", 4)
-            ms_boost = int(attacker.base_ms * skill.get("ms_boost", 1.2))
-            attacker.add_buff("ms_boost", ms_boost, duration)
-            attacker.add_buff("atk_boost", skill.get("atk_boost", 0.2), duration)
-            result += f" {duration}턴간 MS +{int(skill.get('ms_boost',1.2)*100)}%, ATK +{int(skill.get('atk_boost',0.2)*100)}%!"
-        
-        elif effect == "double_speed":
-            duration = skill.get("duration", 3)
-            attacker.add_buff("double_speed", 1.0, duration)
-            result += f" {duration}턴간 2배속 행동!"
-        
-        elif effect == "invincible_atk":
-            duration = skill.get("duration", 2)
-            attacker.add_buff("invincible", 1.0, duration)
-            result += f" {duration}턴간 무적 + 공격 가능!"
-        
-        elif effect == "hp_swap":
-            temp_hp = attacker.current_hp
-            attacker.current_hp = defender.current_hp
-            defender.current_hp = temp_hp
-            result += f" HP 교환! (아군 {attacker.current_hp}, 적군 {defender.current_hp})"
-        
-        elif effect == "stat_swap":
-            temp_hp, temp_atk, temp_ms = attacker.current_hp, attacker.current_atk, attacker.current_ms
-            attacker.current_hp, attacker.current_atk, attacker.current_ms = defender.current_hp, defender.current_atk, defender.current_ms
-            defender.current_hp, defender.current_atk, defender.current_ms = temp_hp, temp_atk, temp_ms
-            result += f" 모든 스탯 교환!"
-        
-        elif effect == "rewind":
-            heal = int(attacker.max_hp * 0.5)
-            attacker.current_hp = min(attacker.max_hp, attacker.current_hp + heal)
-            for slot in attacker.cooldowns:
-                attacker.cooldowns[slot] = max(0, attacker.cooldowns[slot] - 1)
-            result += f" 시간 역행! HP {heal} 회복 + 쿨다운 1턴 감소!"
-        
-        elif effect == "drain_maxhp":
-            drain = int(defender.max_hp * skill.get("value", 0.15))
-            defender.max_hp = max(1, defender.max_hp - drain)
-            defender.current_hp = min(defender.current_hp, defender.max_hp)
-            attacker.max_hp += drain
-            attacker.current_hp += drain
-            result += f" 최대HP {drain} 흡수!"
-        
-        elif effect == "atk_vuln":
-            duration = skill.get("duration", 5)
-            attacker.add_buff("atk_boost", skill.get("atk_boost", 0.8), duration)
-            attacker.add_debuff("vulnerability", skill.get("vuln", 0.3), duration)
-            result += f" {duration}턴간 ATK +{int(skill.get('atk_boost',0.8)*100)}%, 하지만 피해 +{int(skill.get('vuln',0.3)*100)}%!"
-        
-        elif effect == "atk_recoil":
-            duration = skill.get("duration", 5)
-            recoil_hp = skill.get("recoil_hp", 0.2)
-            attacker.add_buff("atk_boost", skill.get("atk_boost", 0.6), duration)
-            attacker.add_debuff("recoil_hp", recoil_hp, duration)
-            result += f" {duration}턴간 ATK +{int(skill.get('atk_boost',0.6)*100)}%, 종료 시 HP {int(recoil_hp*100)}% 손실!"
-        
-        elif effect == "atk_stack":
-            duration = skill.get("duration", 4)
-            initial = skill.get("initial", 0.4)
-            stack = skill.get("stack_per_turn", 0.05)
-            attacker.add_buff("atk_boost", initial, duration)
-            attacker.add_buff("atk_stack", stack, duration)
-            result += f" {duration}턴간 ATK +{int(initial*100)}% + 매턴 +{int(stack*100)}% 누적!"
-        
-        elif effect == "dodge_heal":
-            count = skill.get("dodge_count", 3)
-            attacker.add_buff("dodge_count", 0, 99, count=count)
-            heal = int(attacker.max_hp * skill.get("heal_value", 0.15))
-            attacker.current_hp = min(attacker.max_hp, attacker.current_hp + heal)
-            result += f" {count}회 회피 + HP {heal} 회복!"
-        
-        elif effect == "random_effect":
-            duration = skill.get("duration", 5)
-            attacker.add_buff("random_effect", 1.0, duration)
-            result += f" {duration}턴간 랜덤 효과 발동!"
-        
-        elif effect == "death_loop":
-            duration = skill.get("duration", 5)
-            attacker.add_buff("death_loop", 1.0, duration)
-            result += f" {duration}턴간 사망 시 턴 되돌리기!"
-        
-        elif effect == "delayed_burst":
-            duration = skill.get("duration", 5)
-            attacker.add_buff("delayed_burst", 1.0, duration)
-            result += f" {duration}턴간 데미지 누적 후 폭발!"
-        
-        elif effect == "crit_chance":
-            if not self.check_dodge_simple(defender):
-                crit_chance = skill.get("value", 0.35)
-                crit_dmg = skill.get("crit_dmg", 1.35)
-                if random.random() < crit_chance:
-                    dmg = int(attacker.current_atk * crit_dmg)
-                else:
-                    dmg = attacker.current_atk
-                self.apply_damage(attacker, defender, dmg)
-                result += f" {int(crit_chance*100)}% 확률 크리티컬! {dmg} 데미지!"
-            else:
-                dodged = self.check_and_consume_dodge(defender, defender_name)
-                result += f" -> {dodged}"
-        
-        elif effect == "dodge_multi":
-            count = skill.get("value", 1)
-            attacker.add_buff("dodge_count", 0, 99, count=count)
-            result += f" {count}회 확정 회피!"
-        
-        elif effect == "atk_debuff_enemy":
-            duration = skill.get("duration", 2)
-            debuff_value = skill.get("value", 0.8)
-            defender.add_debuff("atk_reduce", debuff_value, duration)
-            result += f" 적 ATK {int(debuff_value*100)}% 감소 ({duration}턴)!"
-        
-        elif effect == "ms_debuff_enemy":
-            duration = skill.get("duration", 3)
-            ms_reduce = skill.get("value", 0.3)
-            defender.add_debuff("ms_reduce", ms_reduce, duration)
-            result += f" 적 MS {int(ms_reduce*100)}% 감소 ({duration}턴)!"
-        
-        elif effect == "immortal":
-            duration = skill.get("duration", 7)
-            attacker.add_buff("immortal", 1.0, duration)
-            result += f" {duration}턴간 HP 0 이하로 떨어지지 않음 (최소 1 유지)!"
-        
-        elif effect == "ms_double_hit":
-            duration = skill.get("duration", 5)
-            attacker.add_buff("ms_boost", int(attacker.base_ms * skill.get("ms_boost", 5.0)), duration)
-            attacker.add_buff("double_hit", 1.0, duration)
-            result += f" {duration}턴간 MS +{int(skill.get('ms_boost',5.0)*100)}% + 2회 공격!"
-        
-        else:
-            # 미구현 스킬
-            result += f" 효과 발동!"
+        # 결과 조합
+        if effect_results:
+            result += " " + " + ".join(effect_results) + "!"
         
         # 버프/디버프로 인한 스탯 변경사항 즉시 반영
         attacker.apply_buffs()
