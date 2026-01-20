@@ -1501,9 +1501,9 @@ class Battle:
                 else:
                     heal_msg = f"HP {actual_heal} 회복"
             
-            # 남은 턴에 대해 버프 추가
+            # 남은 턴에 대해 버프 추가 (tick_buffs가 먼저 실행되므로 duration 그대로 사용)
             if duration > 1:
-                attacker.add_buff(buff_type, params.get("value", 0.05), duration - 1)
+                attacker.add_buff(buff_type, params.get("value", 0.05), duration)
                 return f"{heal_msg} + {duration - 1}턴간 추가 HP {int(params.get('value',0.05)*100)}% 회복"
             else:
                 return heal_msg
