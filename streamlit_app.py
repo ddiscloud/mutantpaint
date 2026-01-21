@@ -1656,7 +1656,18 @@ class Battle:
         return f"HP 교환 (아군 {attacker.current_hp}, 적군 {defender.current_hp})"
     
     def _effect_stat_swap(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
-        """모든 스탯 교환"""
+        """모든 스탯 교환 (base 포함 - apply_buffs에서 리셋되므로)"""
+        # max_hp 교환
+        temp_max_hp = attacker.max_hp
+        attacker.max_hp = defender.max_hp
+        defender.max_hp = temp_max_hp
+        
+        # base 스탯 교환 (apply_buffs에서 리셋되므로 base도 교환해야 함)
+        temp_base_atk, temp_base_ms = attacker.base_atk, attacker.base_ms
+        attacker.base_atk, attacker.base_ms = defender.base_atk, defender.base_ms
+        defender.base_atk, defender.base_ms = temp_base_atk, temp_base_ms
+        
+        # current 스탯 교환
         temp_hp, temp_atk, temp_ms = attacker.current_hp, attacker.current_atk, attacker.current_ms
         attacker.current_hp, attacker.current_atk, attacker.current_ms = defender.current_hp, defender.current_atk, defender.current_ms
         defender.current_hp, defender.current_atk, defender.current_ms = temp_hp, temp_atk, temp_ms
@@ -2166,12 +2177,6 @@ class Battle:
             # 아무도 행동하지 않음 (게이지만 증가)
             return False
         
-        # death_loop를 위한 상태 저장
-        death_loop_buff = next((b for b in actor.buffs if b.type == "death_loop"), None)
-        saved_hp = actor.current_hp if death_loop_buff else None
-        saved_buffs = [Buff(b.type, b.value, b.duration, b.source, b.count) for b in actor.buffs] if death_loop_buff else None
-        saved_debuffs = [Buff(d.type, d.value, d.duration, d.source, d.count) for d in actor.debuffs] if death_loop_buff else None
-        
         # 실제 행동 발생 - 턴 증가
         self.turn += 1
         
@@ -2261,20 +2266,6 @@ class Battle:
                     opponent.current_hp = max(0, opponent.current_hp - dot_damage)
                     self.add_log(f"{opponent_name} DoT {dot_damage} 데미지! (HP: {opponent.current_hp})")
         
-        # death_loop 체크: 사망 시 턴 시작으로 되돌림
-        if actor.current_hp <= 0 and death_loop_buff and saved_hp is not None:
-            actor.current_hp = saved_hp
-            actor.buffs = saved_buffs
-            actor.debuffs = saved_debuffs
-            # death_loop 버프 duration 감소
-            for b in actor.buffs:
-                if b.type == "death_loop":
-                    b.duration -= 1
-                    if b.duration <= 0:
-                        actor.buffs.remove(b)
-                    break
-            self.add_log(f"⏰ {name} 시간 되돌림! HP {saved_hp}로 복구!")
-        
         return True  # 행동 발생함
     
     def _apply_random_effect(self, actor: BattleInstance, name: str):
@@ -2319,7 +2310,27 @@ class Battle:
         """승패 판정"""
         # 플레이어 부활 체크
         if self.player.current_hp <= 0:
-            # 1. revive_once 체크 (1회 부활)
+            # 1. death_loop 체크 (Time Loop: 부활 + 슬롗1,2 발동)
+            death_loop_buff = next((buff for buff in self.player.buffs if buff.type == "death_loop"), None)
+            if death_loop_buff:
+                # HP 50% 부활
+                revive_hp = int(self.player.max_hp * 0.5)
+                self.player.current_hp = max(1, revive_hp)
+                # death_loop 버프 제거
+                self.player.buffs = [b for b in self.player.buffs if b.type != "death_loop"]
+                self.add_log(f"⏰ 아군 Time Loop 발동! HP {self.player.current_hp}로 부활!")
+                
+                # 슬롗1, 슬롗2 쿨다운 초기화 후 발동
+                for slot in [1, 2]:
+                    skill_id = getattr(self.player, f"skill_{slot}_id", None)
+                    if skill_id:
+                        setattr(self.player, f"skill_{slot}_cooldown", 0)  # 쿨다운 초기화
+                        result = self.use_skill(self.player, slot)
+                        self.add_log(f"⏰ {result}")
+                
+                return False
+            
+            # 2. revive_once 체크 (1회 부활)
             revive_buff = next((buff for buff in self.player.buffs if buff.type == "revive_once"), None)
             if revive_buff:
                 revive_hp = int(self.player.max_hp * revive_buff.value)
@@ -2342,7 +2353,27 @@ class Battle:
         
         # 적 부활 체크
         if self.enemy.current_hp <= 0:
-            # 1. revive_once 체크
+            # 1. death_loop 체크 (Time Loop: 부활 + 슬롗1,2 발동)
+            death_loop_buff = next((buff for buff in self.enemy.buffs if buff.type == "death_loop"), None)
+            if death_loop_buff:
+                # HP 50% 부활
+                revive_hp = int(self.enemy.max_hp * 0.5)
+                self.enemy.current_hp = max(1, revive_hp)
+                # death_loop 버프 제거
+                self.enemy.buffs = [b for b in self.enemy.buffs if b.type != "death_loop"]
+                self.add_log(f"⏰ 적군 Time Loop 발동! HP {self.enemy.current_hp}로 부활!")
+                
+                # 슬롗1, 슬롗2 쿨다운 초기화 후 발동
+                for slot in [1, 2]:
+                    skill_id = getattr(self.enemy, f"skill_{slot}_id", None)
+                    if skill_id:
+                        setattr(self.enemy, f"skill_{slot}_cooldown", 0)  # 쿨다운 초기화
+                        result = self.use_skill(self.enemy, slot)
+                        self.add_log(f"⏰ {result}")
+                
+                return False
+            
+            # 2. revive_once 체크
             revive_buff = next((buff for buff in self.enemy.buffs if buff.type == "revive_once"), None)
             if revive_buff:
                 revive_hp = int(self.enemy.max_hp * revive_buff.value)
