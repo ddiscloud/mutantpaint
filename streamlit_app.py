@@ -5067,6 +5067,7 @@ def page_battle():
             player_final_hp = result["player_final_hp"]
             player_max_hp = result["player"]["stats"]["hp"]
             hp_percent = (player_final_hp / player_max_hp) * 100 if player_max_hp > 0 else 0
+            hp_percent = max(0, min(100, hp_percent))  # 0~100 범위로 제한
             
             st.metric("최종 HP", f"{player_final_hp:,}/{player_max_hp:,}")
             st.progress(hp_percent / 100.0)
@@ -5076,6 +5077,7 @@ def page_battle():
             enemy_final_hp = result["enemy_final_hp"]
             enemy_max_hp = result["enemy"]["stats"]["hp"]
             hp_percent = (enemy_final_hp / enemy_max_hp) * 100 if enemy_max_hp > 0 else 0
+            hp_percent = max(0, min(100, hp_percent))  # 0~100 범위로 제한
             
             st.metric("최종 HP", f"{enemy_final_hp:,}/{enemy_max_hp:,}")
             st.progress(hp_percent / 100.0)
@@ -5455,6 +5457,7 @@ def page_battle():
             player_final_hp = result["player_final_hp"]
             player_max_hp = result["player"]["stats"]["hp"]
             hp_percent = (player_final_hp / player_max_hp) * 100 if player_max_hp > 0 else 0
+            hp_percent = max(0, min(100, hp_percent))  # 0~100 범위로 제한
             
             st.metric("최종 HP", f"{player_final_hp:,}/{player_max_hp:,}")
             st.progress(hp_percent / 100.0)
@@ -5464,6 +5467,7 @@ def page_battle():
             enemy_final_hp = result["enemy_final_hp"]
             enemy_max_hp = result["enemy"]["stats"]["hp"]
             hp_percent = (enemy_final_hp / enemy_max_hp) * 100 if enemy_max_hp > 0 else 0
+            hp_percent = max(0, min(100, hp_percent))  # 0~100 범위로 제한
             
             st.metric("최종 HP", f"{enemy_final_hp:,}/{enemy_max_hp:,}")
             st.progress(hp_percent / 100.0)
