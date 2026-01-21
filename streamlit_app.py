@@ -4259,7 +4259,7 @@ def page_collection():
         st.session_state.collection["skills"] = {"slot1": set(), "slot2": set(), "slot3": set()}
     
     # 도감 탭
-    tab1, tab2, tab3 = st.tabs(["🎨 색상", "🖼️ 패턴", "⚔️ 스킬"])
+    tab1, tab2, tab3, tab4 = st.tabs(["🎨 색상", "🖼️ 패턴", "⚔️ 스킬", "✨ 커스텀 생성"])
     
     # 색상 도감
     with tab1:
@@ -4521,6 +4521,113 @@ def page_collection():
                                     # 미획득 스킬
                                     st.markdown("**???**")
                                     st.caption("???")
+    
+    # 커스텀 개체 생성 탭
+    with tab4:
+        st.markdown("### ✨ 커스텀 개체 생성")
+        st.info("도감에 등록된 색상과 패턴을 조합하여 나만의 개체를 만들어보세요!")
+        
+        # 도감에 등록된 항목만 필터링
+        collection = st.session_state.collection
+        
+        # 메인 색상 (도감에 등록된 것만)
+        available_main_colors = [(cid, COLOR_MASTER[cid]) for cid in collection["colors"]["main"] if cid in COLOR_MASTER]
+        # 서브 색상
+        available_sub_colors = [(cid, COLOR_MASTER[cid]) for cid in collection["colors"]["sub"] if cid in COLOR_MASTER]
+        # 패턴 색상
+        available_pattern_colors = [(cid, COLOR_MASTER[cid]) for cid in collection["colors"]["pattern"] if cid in COLOR_MASTER]
+        # 패턴
+        available_patterns = [(pid, PATTERN_MASTER[pid]) for pid in collection["patterns"] if pid in PATTERN_MASTER]
+        
+        if not available_main_colors or not available_sub_colors or not available_pattern_colors or not available_patterns:
+            st.warning("도감에 등록된 색상과 패턴이 부족합니다. 더 많은 개체를 획득해주세요!")
+        else:
+            col1, col2 = st.columns([1, 1])
+            
+            with col1:
+                st.markdown("#### 🎨 외형 선택")
+                
+                # 메인 색상 선택
+                main_color_options = {f"{c[1]['name']} ({c[1]['grade']})": c[0] for c in sorted(available_main_colors, key=lambda x: (["Normal", "Rare", "Epic", "Unique", "Legendary", "Mystic"].index(x[1]["grade"]), x[1]["name"]))}
+                selected_main_name = st.selectbox("메인 색상", list(main_color_options.keys()), key="custom_main_color")
+                selected_main_id = main_color_options[selected_main_name]
+                
+                # 서브 색상 선택
+                sub_color_options = {f"{c[1]['name']} ({c[1]['grade']})": c[0] for c in sorted(available_sub_colors, key=lambda x: (["Normal", "Rare", "Epic", "Unique", "Legendary", "Mystic"].index(x[1]["grade"]), x[1]["name"]))}
+                selected_sub_name = st.selectbox("서브 색상", list(sub_color_options.keys()), key="custom_sub_color")
+                selected_sub_id = sub_color_options[selected_sub_name]
+                
+                # 패턴 색상 선택
+                pattern_color_options = {f"{c[1]['name']} ({c[1]['grade']})": c[0] for c in sorted(available_pattern_colors, key=lambda x: (["Normal", "Rare", "Epic", "Unique", "Legendary", "Mystic"].index(x[1]["grade"]), x[1]["name"]))}
+                selected_pattern_color_name = st.selectbox("패턴 색상", list(pattern_color_options.keys()), key="custom_pattern_color")
+                selected_pattern_color_id = pattern_color_options[selected_pattern_color_name]
+                
+                # 패턴 선택
+                pattern_options = {f"{p[1]['layout']} ({p[1]['grade']})": p[0] for p in sorted(available_patterns, key=lambda x: (["Normal", "Rare", "Epic", "Unique", "Legendary", "Mystic"].index(x[1]["grade"]), x[1]["layout"]))}
+                selected_pattern_name = st.selectbox("패턴", list(pattern_options.keys()), key="custom_pattern")
+                selected_pattern_id = pattern_options[selected_pattern_name]
+                
+                # 이름 입력
+                custom_name = st.text_input("개체 이름", value="Custom", max_chars=20, key="custom_name")
+            
+            with col2:
+                st.markdown("#### 👁️ 미리보기")
+                
+                # 미리보기용 임시 개체 생성
+                preview_instance = {
+                    "id": "preview",
+                    "appearance": {
+                        "main_color": {"id": selected_main_id, "grade": COLOR_MASTER[selected_main_id]["grade"]},
+                        "sub_color": {"id": selected_sub_id, "grade": COLOR_MASTER[selected_sub_id]["grade"]},
+                        "pattern_color": {"id": selected_pattern_color_id, "grade": COLOR_MASTER[selected_pattern_color_id]["grade"]},
+                        "pattern": {"id": selected_pattern_id, "grade": PATTERN_MASTER[selected_pattern_id]["grade"]}
+                    }
+                }
+                
+                # SVG 렌더링
+                preview_svg = render_instance_svg_cached(
+                    "preview_" + selected_main_id + selected_sub_id + selected_pattern_color_id + selected_pattern_id,
+                    selected_main_id,
+                    selected_sub_id,
+                    selected_pattern_color_id,
+                    selected_pattern_id,
+                    200
+                )
+                st.markdown(f'<div style="display: flex; justify-content: center;">{preview_svg}</div>', unsafe_allow_html=True)
+                
+                # 스탯 표시
+                st.markdown("---")
+                st.markdown("**📊 기본 스탯**")
+                st.markdown("- HP: **10**")
+                st.markdown("- ATK: **1**")
+                st.markdown("- MS: **1**")
+                st.markdown("- 스킬: **없음**")
+            
+            st.markdown("---")
+            
+            # 생성 버튼
+            if st.button("🎨 개체 생성", use_container_width=True, type="primary"):
+                # 개체 생성
+                new_instance = create_instance(
+                    hp=10,
+                    atk=1,
+                    ms=1,
+                    main_color={"id": selected_main_id, "grade": COLOR_MASTER[selected_main_id]["grade"]},
+                    sub_color={"id": selected_sub_id, "grade": COLOR_MASTER[selected_sub_id]["grade"]},
+                    pattern_color={"id": selected_pattern_color_id, "grade": COLOR_MASTER[selected_pattern_color_id]["grade"]},
+                    pattern={"id": selected_pattern_id, "grade": PATTERN_MASTER[selected_pattern_id]["grade"]},
+                    accessory_1=None,
+                    accessory_2=None,
+                    accessory_3=None,
+                    name=custom_name if custom_name else "Custom",
+                    created_by="Custom"
+                )
+                
+                # 저장
+                st.session_state.instances.append(new_instance)
+                save_game_data()
+                st.success(f"✨ '{custom_name}' 개체가 생성되었습니다!")
+                st.balloons()
     
     st.markdown("---")
     
