@@ -46,7 +46,7 @@ if "supabase_initialized" not in st.session_state:
 # 마스터 데이터 로드 (Supabase에서)
 # ============================================================================
 
-# 마스터 데이터 로드 (캐싱 비활성화 - 디버깅용)
+@st.cache_data(ttl=3600)  # 1시간 캐시
 def load_master_data_cached():
     """Supabase에서 마스터 데이터 로드"""
     return {
@@ -1646,7 +1646,7 @@ class Battle:
         defender.max_hp = max(1, defender.max_hp - drain)
         defender.current_hp = min(defender.current_hp, defender.max_hp)
         attacker.max_hp += drain
-        attacker.current_hp += drain
+        attacker.current_hp += drainn
         return f"최대HP {drain} 흡수"
     
     def _effect_instant_atk(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
