@@ -1646,7 +1646,7 @@ class Battle:
         defender.max_hp = max(1, defender.max_hp - drain)
         defender.current_hp = min(defender.current_hp, defender.max_hp)
         attacker.max_hp += drain
-        attacker.current_hp += drain
+        attacker.current_hp += drain 
         return f"최대HP {drain} 흡수"
     
     def _effect_instant_atk(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
