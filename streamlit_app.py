@@ -1143,7 +1143,12 @@ class Battle:
         counter_buff = next((buff for buff in defender.buffs if buff.type == "counter"), None)
         if counter_buff and defender.current_hp > 0:
             counter_damage = int(damage * counter_buff.value)
-            attacker.current_hp = max(0, attacker.current_hp - counter_damage)
+            # immortal 체크
+            attacker_immortal = any(buff.type == "immortal" for buff in attacker.buffs)
+            if attacker_immortal:
+                attacker.current_hp = max(1, attacker.current_hp - counter_damage)
+            else:
+                attacker.current_hp = max(0, attacker.current_hp - counter_damage)
             # 로그에 반격 데미지 기록 (나중에 표시용)
             defender.last_counter_damage = counter_damage
         else:
@@ -1303,15 +1308,30 @@ class Battle:
         if ctx.get("dodged"):
             return ""
         drain_amount = int(defender.current_hp * params.get("value", 0.2))
-        defender.current_hp = max(0, defender.current_hp - drain_amount)
+        # immortal 체크
+        has_immortal = any(buff.type == "immortal" for buff in defender.buffs)
+        if has_immortal:
+            defender.current_hp = max(1, defender.current_hp - drain_amount)
+        else:
+            defender.current_hp = max(0, defender.current_hp - drain_amount)
         attacker.current_hp = min(attacker.max_hp, attacker.current_hp + drain_amount)
         return f"적 HP {drain_amount} 흡수"
     
     def _effect_heal_full(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
-        """HP 완전 회복"""
+        """HP 완전 회복 (오버힐 → 쉴드 50%)"""
         if any(d and d.type == "heal_block" for d in attacker.debuffs):
             return "(힐 차단 중!)"
-        attacker.current_hp = attacker.max_hp
+        heal_amount = attacker.max_hp  # 최대 HP 만큼 힐
+        before_hp = attacker.current_hp
+        attacker.current_hp = min(attacker.max_hp, attacker.current_hp + heal_amount)
+        actual_heal = attacker.current_hp - before_hp
+        overheal = heal_amount - actual_heal
+        shield_gain = 0
+        if overheal > 0:
+            shield_gain = int(overheal * 0.5)
+            attacker.shield += shield_gain
+        if shield_gain > 0:
+            return f"HP 완전 회복 + 쉴드 {shield_gain}"
         return "HP 완전 회복"
     
     def _effect_cleanse(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
@@ -1333,7 +1353,12 @@ class Battle:
         if ctx.get("dodged"):
             return ""
         dmg = int(defender.current_hp * params.get("value", 0.5))
-        defender.current_hp = max(0, defender.current_hp - dmg)
+        # immortal 체크
+        has_immortal = any(buff.type == "immortal" for buff in defender.buffs)
+        if has_immortal:
+            defender.current_hp = max(1, defender.current_hp - dmg)
+        else:
+            defender.current_hp = max(0, defender.current_hp - dmg)
         return f"고정 {dmg} 데미지"
     
     def _effect_fixed_dmg_maxhp(self, attacker: BattleInstance, defender: BattleInstance, params: dict, ctx: dict) -> str:
@@ -1349,9 +1374,14 @@ class Battle:
         hits = params.get("hits", 2)
         dmg_per = params.get("dmg_per", 0.4)
         total_dmg = 0
+        # immortal 체크
+        has_immortal = any(buff.type == "immortal" for buff in defender.buffs)
         for _ in range(hits):
             dmg = int(attacker.current_atk * dmg_per * random.uniform(0.8, 1.2))
-            defender.current_hp = max(0, defender.current_hp - dmg)
+            if has_immortal:
+                defender.current_hp = max(1, defender.current_hp - dmg)
+            else:
+                defender.current_hp = max(0, defender.current_hp - dmg)
             total_dmg += dmg
         return f"{hits}회 연타! 총 {total_dmg} 데미지"
     
@@ -2103,7 +2133,12 @@ class Battle:
             result += f" ⚔️ 반격 {defender.last_counter_damage}!"
         
         if reflect_dmg > 0:
-            attacker.current_hp = max(0, attacker.current_hp - reflect_dmg)
+            # immortal 체크
+            attacker_immortal = any(buff.type == "immortal" for buff in attacker.buffs)
+            if attacker_immortal:
+                attacker.current_hp = max(1, attacker.current_hp - reflect_dmg)
+            else:
+                attacker.current_hp = max(0, attacker.current_hp - reflect_dmg)
             result += f" 반사 {reflect_dmg} 데미지!"
         
         return result
@@ -2179,7 +2214,12 @@ class Battle:
         if burst_buff and hasattr(actor, 'delayed_damage') and actor.delayed_damage > 0:
             opponent = self.enemy if actor.is_player else self.player
             burst_dmg = actor.delayed_damage
-            opponent.current_hp = max(0, opponent.current_hp - burst_dmg)
+            # immortal 체크
+            has_immortal = any(buff.type == "immortal" for buff in opponent.buffs)
+            if has_immortal:
+                opponent.current_hp = max(1, opponent.current_hp - burst_dmg)
+            else:
+                opponent.current_hp = max(0, opponent.current_hp - burst_dmg)
             opponent_name = "적군" if actor.is_player else "아군"
             self.add_log(f"💥 {name} 누적 데미지 폭발! {opponent_name}에게 {burst_dmg} 데미지!")
             actor.delayed_damage = 0
@@ -2266,7 +2306,12 @@ class Battle:
         elif effect_type == "damage":
             opponent = self.enemy if actor.is_player else self.player
             dmg = int(opponent.current_hp * value)
-            opponent.current_hp = max(0, opponent.current_hp - dmg)
+            # immortal 체크
+            has_immortal = any(buff.type == "immortal" for buff in opponent.buffs)
+            if has_immortal:
+                opponent.current_hp = max(1, opponent.current_hp - dmg)
+            else:
+                opponent.current_hp = max(0, opponent.current_hp - dmg)
             opponent_name = "적군" if actor.is_player else "아군"
             self.add_log(f"🎲 {name} 랜덤 공격! {opponent_name}에게 {dmg} 데미지!")
     
