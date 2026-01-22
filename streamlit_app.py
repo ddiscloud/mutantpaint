@@ -4715,9 +4715,9 @@ def page_ranking():
         # 내 정보 간결하게
         col1, col2, col3 = st.columns([1, 3, 2])
         with col1:
-            # 원하는 크기로 직접 SVG 생성
-            svg_80 = get_instance_svg(my_rep["instance"], size=80)
-            st.markdown(svg_80, unsafe_allow_html=True)
+            # SVG를 120으로 생성하고 CSS로 크기 조절
+            svg = get_instance_svg(my_rep["instance"], size=120)
+            st.markdown(f'<div style="width:80px;height:80px;">{svg}</div>', unsafe_allow_html=True)
         with col2:
             st.markdown(f"**{my_rep['instance']['name']}**")
             st.markdown(f"💪 **{format_korean_number(my_rep['power_score'])}** | HP {my_rep['instance']['stats']['hp']:,} | ATK {my_rep['instance']['stats']['atk']:,} | MS {my_rep['instance']['stats']['ms']:,}")
@@ -4766,9 +4766,9 @@ def page_ranking():
                 </div>
                 """, unsafe_allow_html=True)
                 
-                # 원하는 크기로 직접 SVG 생성
-                svg = get_instance_svg(rep["instance"], size=100)
-                st.markdown(f'<div style="text-align: center;">{svg}</div>', unsafe_allow_html=True)
+                # SVG를 120으로 생성하고 CSS로 크기 조절
+                svg = get_instance_svg(rep["instance"], size=120)
+                st.markdown(f'<div style="text-align:center;"><div style="width:100px;height:100px;margin:0 auto;">{svg}</div></div>', unsafe_allow_html=True)
                 st.markdown(f'<div style="text-align: center; font-weight: bold; margin-top: 10px;">{rep["instance"]["name"]}</div>', unsafe_allow_html=True)
                 
                 with st.expander("상세 정보"):
@@ -4807,9 +4807,9 @@ def page_ranking():
                 st.markdown(f"**{rank}**")
             
             with col2:
-                # 원하는 크기로 직접 SVG 생성
-                svg_50 = get_instance_svg(rep["instance"], size=50)
-                st.markdown(svg_50, unsafe_allow_html=True)
+                # SVG를 120으로 생성하고 CSS로 크기 조절
+                svg = get_instance_svg(rep["instance"], size=120)
+                st.markdown(f'<div style="width:50px;height:50px;">{svg}</div>', unsafe_allow_html=True)
             
             with col3:
                 name_style = "color: #ff6b6b; font-weight: bold;" if is_me else ""
