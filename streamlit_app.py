@@ -4801,40 +4801,41 @@ def page_ranking():
             rank = idx + 4  # 4위부터 시작
             is_me = rep["username"] == my_username
             
-            col1, col2, col3, col4 = st.columns([0.5, 1, 2, 1.5])
-            
-            with col1:
-                st.markdown(f"**{rank}**")
-            
-            with col2:
-                # SVG를 120으로 생성하고 CSS로 크기 조절
-                svg = get_instance_svg(rep["instance"], size=120)
-                st.markdown(f'<div style="width:50px;height:50px;">{svg}</div>', unsafe_allow_html=True)
-            
-            with col3:
-                name_style = "color: #ff6b6b; font-weight: bold;" if is_me else ""
-                st.markdown(f"<div style='{name_style}'>{rep['username']}</div>", unsafe_allow_html=True)
-                st.caption(f"{rep['instance']['name']}")
-            
-            with col4:
-                st.markdown(f"💪 **{format_korean_number(rep['power_score'])}**")
-                with st.expander("상세"):
-                    st.markdown(f"HP: {rep['instance']['stats']['hp']:,}")
-                    st.markdown(f"ATK: {rep['instance']['stats']['atk']:,}")
-                    st.markdown(f"MS: {rep['instance']['stats']['ms']:,}")
-                    
-                    st.markdown("**⚔️ 스킬:**")
-                    for i in range(1, 4):
-                        acc_key = f"accessory_{i}"
-                        if rep['instance'].get(acc_key) and rep['instance'][acc_key]["id"] in SKILL_MASTER:
-                            skill = SKILL_MASTER[rep['instance'][acc_key]["id"]]
-                            st.markdown(f"• **{skill['name']}** ({skill['grade']})")
-                            st.caption(skill['desc'])
-                        else:
-                            st.markdown(f"• 슬롯 {i}: 없음")
+            # 컨테이너로 감싸서 최소 높이 확보
+            with st.container():
+                col1, col2, col3, col4 = st.columns([0.5, 1, 2, 1.5])
+                
+                with col1:
+                    st.markdown(f'<div style="min-height:60px; display:flex; align-items:center;"><span style="font-weight:bold; font-size:1.1em;">{rank}</span></div>', unsafe_allow_html=True)
+                
+                with col2:
+                    # SVG를 120으로 생성하고 CSS로 크기 조절
+                    svg = get_instance_svg(rep["instance"], size=120)
+                    st.markdown(f'<div style="width:55px;height:55px;">{svg}</div>', unsafe_allow_html=True)
+                
+                with col3:
+                    name_style = "color: #ff6b6b; font-weight: bold;" if is_me else ""
+                    st.markdown(f'<div style="min-height:60px; display:flex; flex-direction:column; justify-content:center;"><div style="{name_style}">{rep["username"]}</div><div style="opacity:0.7; font-size:0.85em;">{rep["instance"]["name"]}</div></div>', unsafe_allow_html=True)
+                
+                with col4:
+                    st.markdown(f'<div style="min-height:60px; display:flex; align-items:center;">💪 <strong>{format_korean_number(rep["power_score"])}</strong></div>', unsafe_allow_html=True)
+                    with st.expander("상세"):
+                        st.markdown(f"HP: {rep['instance']['stats']['hp']:,}")
+                        st.markdown(f"ATK: {rep['instance']['stats']['atk']:,}")
+                        st.markdown(f"MS: {rep['instance']['stats']['ms']:,}")
+                        
+                        st.markdown("**⚔️ 스킬:**")
+                        for i in range(1, 4):
+                            acc_key = f"accessory_{i}"
+                            if rep['instance'].get(acc_key) and rep['instance'][acc_key]["id"] in SKILL_MASTER:
+                                skill = SKILL_MASTER[rep['instance'][acc_key]["id"]]
+                                st.markdown(f"• **{skill['name']}** ({skill['grade']})")
+                                st.caption(skill['desc'])
+                            else:
+                                st.markdown(f"• 슬롯 {i}: 없음")
             
             if idx < len(remaining) - 1:  # 마지막이 아니면 구분선
-                st.markdown("<hr style='margin: 15px 0; opacity: 0.2;'>", unsafe_allow_html=True)
+                st.markdown("<hr style='margin: 12px 0; opacity: 0.15;'>", unsafe_allow_html=True)
     elif len(representatives) <= 3:
         st.info("4위 이하 랭킹이 없습니다.")
 
