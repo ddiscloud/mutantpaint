@@ -4715,10 +4715,8 @@ def page_ranking():
         # 내 정보 간결하게
         col1, col2, col3 = st.columns([1, 3, 2])
         with col1:
-            # 캐시된 SVG 사용 또는 생성
-            svg_120 = my_rep.get("svg_cached") or get_instance_svg(my_rep["instance"], size=120)
-            # 크기 축소 (120 -> 80)
-            svg_80 = svg_120.replace('width="120"', 'width="80"').replace('height="120"', 'height="80"')
+            # 원하는 크기로 직접 SVG 생성
+            svg_80 = get_instance_svg(my_rep["instance"], size=80)
             st.markdown(svg_80, unsafe_allow_html=True)
         with col2:
             st.markdown(f"**{my_rep['instance']['name']}**")
@@ -4768,8 +4766,8 @@ def page_ranking():
                 </div>
                 """, unsafe_allow_html=True)
                 
-                # 캐시된 SVG 사용 또는 생성
-                svg = rep.get("svg_cached") or get_instance_svg(rep["instance"], size=120)
+                # 원하는 크기로 직접 SVG 생성
+                svg = get_instance_svg(rep["instance"], size=100)
                 st.markdown(f'<div style="text-align: center;">{svg}</div>', unsafe_allow_html=True)
                 st.markdown(f'<div style="text-align: center; font-weight: bold; margin-top: 10px;">{rep["instance"]["name"]}</div>', unsafe_allow_html=True)
                 
@@ -4809,9 +4807,8 @@ def page_ranking():
                 st.markdown(f"**{rank}**")
             
             with col2:
-                # 캐시된 SVG를 크기 축소하여 사용
-                svg_120 = rep.get("svg_cached") or get_instance_svg(rep["instance"], size=120)
-                svg_50 = svg_120.replace('width="120"', 'width="50"').replace('height="120"', 'height="50"')
+                # 원하는 크기로 직접 SVG 생성
+                svg_50 = get_instance_svg(rep["instance"], size=50)
                 st.markdown(svg_50, unsafe_allow_html=True)
             
             with col3:
