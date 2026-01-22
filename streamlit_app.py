@@ -4768,8 +4768,8 @@ def page_ranking():
                 
                 # SVG를 120으로 생성하고 CSS로 크기 조절
                 svg = get_instance_svg(rep["instance"], size=120)
-                st.markdown(f'<div style="text-align:center;"><div style="width:100px;height:100px;margin:0 auto;">{svg}</div></div>', unsafe_allow_html=True)
-                st.markdown(f'<div style="text-align: center; font-weight: bold; margin-top: 10px;">{rep["instance"]["name"]}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="text-align:center; margin-top:10px;"><div style="width:100px;height:100px;margin:0 auto;">{svg}</div></div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="text-align:center; font-weight:bold; margin-top:15px; margin-bottom:10px;">{rep["instance"]["name"]}</div>', unsafe_allow_html=True)
                 
                 with st.expander("상세 정보"):
                     st.markdown(f"HP: {rep['instance']['stats']['hp']:,}")
@@ -4834,7 +4834,7 @@ def page_ranking():
                             st.markdown(f"• 슬롯 {i}: 없음")
             
             if idx < len(remaining) - 1:  # 마지막이 아니면 구분선
-                st.markdown("<hr style='margin: 5px 0; opacity: 0.3;'>", unsafe_allow_html=True)
+                st.markdown("<hr style='margin: 15px 0; opacity: 0.2;'>", unsafe_allow_html=True)
     elif len(representatives) <= 3:
         st.info("4위 이하 랭킹이 없습니다.")
 
