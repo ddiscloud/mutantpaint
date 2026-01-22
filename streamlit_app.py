@@ -3043,23 +3043,21 @@ def format_korean_number(n: int) -> str:
 
 @st.cache_data(ttl=600)  # 10분 캐싱
 def get_all_users_representatives() -> List[Dict]:
-    """모든 사용자의 대표 유닛 정보 수집 (캐싱됨)"""
+    """모든 사용자의 대표 유닛 정보 수집 (캐싱됨, 최적화됨)"""
     representatives = []
     
-    # 방법 1: Supabase에서 시도
+    # 방법 1: Supabase에서 단일 쿼리로 모든 데이터 로드 (최적화)
     try:
-        from supabase_db import get_all_users, load_game_data as db_load_game_data
+        from supabase_db import get_all_user_data
         
-        users = get_all_users()
+        # 한 번의 쿼리로 모든 사용자 게임 데이터 가져오기
+        all_user_data = get_all_user_data()
         
-        for user in users:
-            username = user.get("username")
-            if not username:
-                continue
+        for user_data in all_user_data:
+            username = user_data.get("username")
+            game_data = user_data.get("data")
             
-            # 게임 데이터 로드 (Supabase)
-            game_data = db_load_game_data(username)
-            if not game_data:
+            if not username or not game_data:
                 continue
             
             # 대표 유닛 확인
@@ -3071,14 +3069,11 @@ def get_all_users_representatives() -> List[Dict]:
             rep_inst = next((inst for inst in instances if inst.get("id") == rep_id), None)
             
             if rep_inst and rep_inst.get("stats"):
-                # SVG를 미리 캐싱
-                svg = get_instance_svg(rep_inst, size=120)
-                
                 representatives.append({
                     "username": username,
                     "instance": rep_inst,
                     "power_score": calculate_power_score(rep_inst["stats"]),
-                    "svg_cached": svg
+                    "svg_cached": None  # SVG는 렌더링 시점에 생성 (지연 로딩)
                 })
     except Exception as e:
         print(f"⚠️ Supabase 랭킹 조회 실패: {e}")
@@ -3100,13 +3095,12 @@ def get_all_users_representatives() -> List[Dict]:
                             
                             if rep_inst and rep_inst.get("stats"):
                                 username = filename.replace("_data.json", "")
-                                svg = get_instance_svg(rep_inst, size=120)
                                 
                                 representatives.append({
                                     "username": username,
                                     "instance": rep_inst,
                                     "power_score": calculate_power_score(rep_inst["stats"]),
-                                    "svg_cached": svg
+                                    "svg_cached": None
                                 })
                     except Exception:
                         continue
